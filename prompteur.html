@@ -135,7 +135,14 @@ let rsPosMs     = 0;
 let rsDurMs     = 0;
 let rsPlaying   = false;
 let pollTm      = null;
-let scrollTm    = null;
+let statePollTm = null;
+let interpTm    = null;
+
+// Base pour interpolation locale (avance rsPosMs entre les polls RS)
+let _rsBaseMs   = 0;
+let _rsBaseTime = 0;
+// Dernier timestamp d'un state_update WS avec posMs
+let _lastWsMs   = 0;
 
 // ─── DOM ─────────────────────────────────────
 const scroller  = document.getElementById('scroller');
@@ -155,7 +162,10 @@ socket.on('disconnect', () => { connDot.classList.remove('ok'); });
 let _initDone = false;
 socket.on('state_update', data => {
   // Ignorer les events WS avant que init() ait chargé SYNC
-  if (_initDone) applyState(data);
+  if (_initDone) {
+    if (data && data.posMs !== undefined) _lastWsMs = Date.now();
+    applyState(data);
+  }
 });
 
 // ─── INIT ────────────────────────────────────
@@ -185,9 +195,11 @@ async function init() {
 function applyState(state) {
   if (!state || typeof state !== 'object') return;
 
-  // Mettre à jour la position depuis le state ShowMaster (évite de dépendre du poll RS direct)
-  if (state.posMs !== undefined) {
-    rsPosMs = state.posMs;
+  // Mettre à jour la position et la base d'interpolation
+  if (state.posMs !== undefined && state.posMs > 0) {
+    rsPosMs     = state.posMs;
+    _rsBaseMs   = state.posMs;
+    _rsBaseTime = Date.now();
     if (state.durMs) {
       rsDurMs = state.durMs;
       playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
@@ -205,7 +217,6 @@ function applyState(state) {
   if (songId !== curSongId) {
     displaySong(songId, state.nowPlaying || (state.queue && state.queue[0]));
   } else if (flatLines.length > 0) {
-    // Même chanson : juste mettre à jour le surlignage avec la nouvelle position
     tickHighlight();
   }
 }
@@ -275,16 +286,22 @@ function rsUrl(path) {
 
 async function pollRS() {
   try {
-    const r = await fetch(rsUrl('/api/status'), { signal: AbortSignal.timeout(2500) });
+    const r = await fetch(rsUrl('/api/status'), { signal: AbortSignal.timeout(2000) });
     if (!r.ok) return;
     const d = await r.json();
     const ps = (d.playState || 'STOPPED').toUpperCase();
     rsPlaying = ps === 'PLAYING';
-    rsPosMs   = d.positionMillis || 0;
-    rsDurMs   = d.currentCompositionDurationMillis || 0;
 
-    // Mettre à jour la barre
-    if (rsDurMs > 0) playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
+    // Enregistrer la base pour l'interpolation locale
+    if (d.positionMillis !== undefined) {
+      _rsBaseMs   = d.positionMillis;
+      _rsBaseTime = Date.now();
+      rsPosMs     = d.positionMillis;
+    }
+    if (d.currentCompositionDurationMillis) {
+      rsDurMs = d.currentCompositionDurationMillis;
+      if (rsDurMs > 0) playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
+    }
 
     // Changer la chanson affichée si composition différente
     if (d.currentCompositionName) {
@@ -295,17 +312,34 @@ async function pollRS() {
       );
       if (found && found.id !== curSongId) displaySong(found.id);
     }
+  } catch(e) {}
+}
 
-    // Surlignage (même en pause, pour voir la position courante)
-    if (flatLines.length > 0 && SYNC[curSongId]) {
-      tickHighlight();
-    }
+// Interpolation locale — avance rsPosMs entre les polls RS et appelle tickHighlight
+function tickInterp() {
+  if (rsPlaying && _rsBaseTime > 0) {
+    rsPosMs = _rsBaseMs + (Date.now() - _rsBaseTime);
+    if (rsDurMs > 0) playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
+  }
+  if (flatLines.length > 0) tickHighlight();
+}
+
+// Fallback REST : recharge le state quand le WS est silencieux (app principale fermée)
+async function pollState() {
+  if (Date.now() - _lastWsMs < 3000) return; // WS encore actif
+  try {
+    const r = await fetch(SERVER + '/api/state', { signal: AbortSignal.timeout(2000) });
+    if (r.ok && _initDone) { const d = await r.json(); applyState(d); }
   } catch(e) {}
 }
 
 function startRsPoll() {
   clearInterval(pollTm);
-  pollTm = setInterval(pollRS, 250);
+  clearInterval(interpTm);
+  clearInterval(statePollTm);
+  pollTm      = setInterval(pollRS,     500);   // poll RS toutes les 500ms
+  interpTm    = setInterval(tickInterp,  100);   // interpolation locale toutes les 100ms
+  statePollTm = setInterval(pollState,  2000);   // fallback REST si WS silencieux
 }
 
 // ─── HIGHLIGHT + SCROLL ──────────────────────
