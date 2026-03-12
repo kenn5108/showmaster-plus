@@ -1294,6 +1294,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       nowPlayingLocked = savedState.nowPlayingLocked || false;
     }
 
+    // Réglages RocketShow partagés (host/port communs à tous les appareils)
+    const savedSettings = await smGet('/api/settings', null);
+    if (savedSettings) {
+      if (savedSettings.rs_host) { RS_HOST = savedSettings.rs_host; localStorage.setItem('sm_rs_host', RS_HOST); }
+      if (savedSettings.rs_port) { RS_PORT = savedSettings.rs_port; localStorage.setItem('sm_rs_port', RS_PORT); }
+    }
+
     // Connexion WebSocket pour sync multi-appareils
     smConnect();
   }
@@ -3117,6 +3124,7 @@ function saveSettings() {
   RS_PORT = (document.getElementById('setPort').value || '80').trim();
   localStorage.setItem('sm_rs_host', RS_HOST);
   localStorage.setItem('sm_rs_port', RS_PORT);
+  smPost('/api/settings', { rs_host: RS_HOST, rs_port: RS_PORT }); // Partage les réglages RS avec tous les appareils
   updateSettingsUrls();
   toast('&#10003; Paramètres sauvegardés', 'ok');
   testRsConnection();

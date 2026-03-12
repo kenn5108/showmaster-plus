@@ -63,6 +63,19 @@ def post_state():
     socketio.emit('state_update', data, skip_sid=request.headers.get('X-Socket-Id'))
     return jsonify({'ok': True})
 
+# ── SETTINGS : config RocketShow partagée ─────────────────────────────────────
+SETTINGS_DEFAULT = {'rs_host': 'rocketshow.local', 'rs_port': '80'}
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    return jsonify(load_json('settings.json', SETTINGS_DEFAULT))
+
+@app.route('/api/settings', methods=['POST'])
+def post_settings():
+    data = request.get_json(force=True)
+    save_json('settings.json', data)
+    return jsonify({'ok': True})
+
 # ── SONGS : catalogue + statuts ───────────────────────────────────────────────
 SONGS_DEFAULT = {'songs': [], 'statuses': {}}
 
