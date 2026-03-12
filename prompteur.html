@@ -205,6 +205,8 @@ function applyState(state) {
       playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
     }
   }
+  // isPlaying du serveur pilote l'interpolation locale (même sans poll RS direct)
+  if (state.isPlaying !== undefined) rsPlaying = state.isPlaying;
 
   // Identifier la chanson à afficher
   let songId = null;
@@ -224,6 +226,8 @@ function applyState(state) {
 // ─── DISPLAY SONG ────────────────────────────
 function displaySong(songId, songObj) {
   curSongId = songId;
+  // Réinitialiser la position pour la nouvelle chanson
+  rsPosMs = 0; _rsBaseMs = 0; _rsBaseTime = Date.now();
   // songObj : objet song depuis le state (fallback si SONGS pas encore chargé)
   const s = SONGS.find(x => x.id === songId) || songObj || null;
 
@@ -286,7 +290,7 @@ function rsUrl(path) {
 
 async function pollRS() {
   try {
-    const r = await fetch(rsUrl('/api/status'), { signal: AbortSignal.timeout(2000) });
+    const r = await fetch(rsUrl('/api/system/state'), { signal: AbortSignal.timeout(2000) });
     if (!r.ok) return;
     const d = await r.json();
     const ps = (d.playState || 'STOPPED').toUpperCase();

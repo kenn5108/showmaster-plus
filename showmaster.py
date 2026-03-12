@@ -98,7 +98,7 @@ def rs_auto_loop():
                         if auto_mode:
                             state['isPlaying'] = True
                             save_json('state.json', state)
-                            socketio.emit('state_update', state)
+                            socketio.emit('state_update', state, namespace='/')
                             rs_name = next_song.get('rsName') or next_song.get('title', '')
                             print(f'[RS] Auto-play → "{rs_name}"')
                             threading.Timer(0.4, rs_load_and_play, args=[rs_name]).start()
@@ -106,7 +106,7 @@ def rs_auto_loop():
                             # Mode manuel : pré-charger mais ne pas jouer
                             state['isPlaying'] = False
                             save_json('state.json', state)
-                            socketio.emit('state_update', state)
+                            socketio.emit('state_update', state, namespace='/')
                             rs_name = next_song.get('rsName') or next_song.get('title', '')
                             print(f'[RS] Mode manuel : pré-charge "{rs_name}"')
                             threading.Thread(target=rs_load_only, args=[rs_name], daemon=True).start()
@@ -124,7 +124,7 @@ def rs_auto_loop():
             if dur_ms > 0: _rs_prev_dur_ms = dur_ms
 
         except Exception as e:
-            pass  # RS injoignable, on réessaie dans 1s
+            print(f'[RS] Poll error: {e}')
 
         time.sleep(1)
 
@@ -234,12 +234,22 @@ def on_connect():
 def on_disconnect():
     print(f'[WS] Client déconnecté : {request.sid}')
 
+# ── Démarrer la boucle RS (indépendant du mode de lancement) ─────────────────
+_rs_thread = threading.Thread(target=rs_auto_loop, daemon=True)
+_rs_thread.start()
+
+# ── Endpoint debug RS ──────────────────────────────────────────────────────────
+@app.route('/api/rs/debug')
+def rs_debug():
+    return jsonify({
+        'thread_alive': _rs_thread.is_alive(),
+        'prev_state':   _rs_prev_state,
+        'prev_pos_ms':  _rs_prev_pos_ms,
+        'prev_dur_ms':  _rs_prev_dur_ms,
+    })
+
 # ── Lancement ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    # Démarrer la boucle auto-play RS en arrière-plan
-    _rs_thread = threading.Thread(target=rs_auto_loop, daemon=True)
-    _rs_thread.start()
-
     print(f'ShowMaster+ démarré sur http://0.0.0.0:{PORT}')
     print(f'Données stockées dans : {DATA_DIR}')
     socketio.run(app, host='0.0.0.0', port=PORT, debug=False, allow_unsafe_werkzeug=True)
