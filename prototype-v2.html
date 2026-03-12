@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>ShowMaster+</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1163,6 +1164,75 @@ let ambTimer = null, ambProg = 0, ambFading = false;
 let barAmbPlaying = false;
 let connected = false;
 
+// ─── SHOWMASTER SERVER ───────────────────────
+// Détecte si on tourne sur le serveur Flask ou en fichier local
+const SM_SERVER = (location.protocol === 'http:' && location.port === '8888')
+  ? `http://${location.hostname}:8888`
+  : null; // null = mode fichier local, pas de persistance serveur
+
+let smSocket = null;
+let _receivingUpdate = false; // guard anti-boucle WebSocket
+
+async function smGet(path, fallback) {
+  if (!SM_SERVER) return fallback;
+  try {
+    const r = await fetch(SM_SERVER + path);
+    if (!r.ok) return fallback;
+    return await r.json();
+  } catch { return fallback; }
+}
+
+async function smPost(path, data) {
+  if (!SM_SERVER) return;
+  try {
+    await fetch(SM_SERVER + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+                 'X-Socket-Id': smSocket?.id || '' },
+      body: JSON.stringify(data)
+    });
+  } catch { /* silencieux */ }
+}
+
+function smSaveState() {
+  smPost('/api/state', {
+    queue, nowPlaying, isPlaying, nowPlayingLocked
+  });
+}
+
+function smSaveSongs() {
+  smPost('/api/songs', { songs: SONGS, statuses: SONG_STATUSES });
+}
+
+function smSaveLyrics() {
+  smPost('/api/lyrics', SYNC);
+}
+
+function smSavePlaylists() {
+  smPost('/api/playlists', PL);
+}
+
+function smApplyState(s) {
+  if (!s) return;
+  _receivingUpdate = true;
+  queue             = s.queue            || [];
+  nowPlaying        = s.nowPlaying       || null;
+  isPlaying         = s.isPlaying        || false;
+  nowPlayingLocked  = s.nowPlayingLocked || false;
+  renderNP(); renderQ(); updateHeaderPill();
+  _receivingUpdate = false;
+}
+
+function smConnect() {
+  if (!SM_SERVER) return;
+  smSocket = io(SM_SERVER, { transports: ['websocket', 'polling'] });
+  smSocket.on('state_update', s => {
+    if (!_receivingUpdate) smApplyState(s);
+  });
+  smSocket.on('connect', () => console.log('[SM] WebSocket connecté'));
+  smSocket.on('disconnect', () => console.log('[SM] WebSocket déconnecté'));
+}
+
 // ─── ROCKETSHOW API ─────────────────────────
 let RS_HOST = localStorage.getItem('sm_rs_host') || 'rocketshow.local';
 let RS_PORT = localStorage.getItem('sm_rs_port') || '80';
@@ -1192,12 +1262,48 @@ function setConnected(val) {
 }
 
 // ─── INIT ────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // ── Chargement depuis le serveur ShowMaster (si disponible) ──
+  if (SM_SERVER) {
+    // Songs + statuts
+    const savedSongs = await smGet('/api/songs', null);
+    if (savedSongs && savedSongs.songs && savedSongs.songs.length > 0) {
+      SONGS        = savedSongs.songs;
+      SONG_STATUSES = savedSongs.statuses || {};
+    }
+
+    // Paroles synchronisées
+    const savedLyrics = await smGet('/api/lyrics', null);
+    if (savedLyrics) {
+      Object.assign(SYNC, savedLyrics);
+    }
+
+    // Playlists
+    const savedPl = await smGet('/api/playlists', null);
+    if (savedPl && Object.keys(savedPl).length > 0) {
+      Object.assign(PL, savedPl);
+    }
+
+    // File d'attente + titre en cours
+    const savedState = await smGet('/api/state', null);
+    if (savedState) {
+      queue            = savedState.queue            || [];
+      nowPlaying       = savedState.nowPlaying       || null;
+      isPlaying        = savedState.isPlaying        || false;
+      nowPlayingLocked = savedState.nowPlayingLocked || false;
+    }
+
+    // Connexion WebSocket pour sync multi-appareils
+    smConnect();
+  }
+
   renderSongs();
   renderPSongs();
   renderTagRow();
   renderAplList(); renderAmbSongs(); renderAmbLib(); // ambiance tab init
   buildCtxSub();
+  renderNP(); renderQ(); updateHeaderPill();
   initSortable();
   initResponsive();
   updateTraitCount();
@@ -1380,15 +1486,17 @@ function addToQ(id, e) {
   if (!s) return;
   queue.push({...s});
   renderQ();
+  smSaveState();
   toast(`"${s.title}" ajouté à la file`, 'ok');
 }
 function addAllToQ() {
   getFiltered().forEach(s => queue.push({...s}));
   renderQ();
+  smSaveState();
   toast(`${getFiltered().length} chansons ajoutées`, 'ok');
 }
-function removeFromQ(idx) { queue.splice(idx, 1); renderQ(); }
-function clearQ() { queue = []; renderQ(); toast('File vidée', 'info'); }
+function removeFromQ(idx) { queue.splice(idx, 1); renderQ(); smSaveState(); }
+function clearQ() { queue = []; renderQ(); smSaveState(); toast('File vidée', 'info'); }
 function lancerNext() {
   if (queue.length === 0) return;
   playSong(queue.shift().id);
@@ -1781,6 +1889,7 @@ function broadcastState() {
     };
     localStorage.setItem('sm_state', JSON.stringify(state));
   } catch(e) {}
+  smSaveState();
 }
 
 function updateTime() {
@@ -1899,6 +2008,7 @@ function cancelLoaded() {
   queue.unshift(nowPlaying);
   nowPlaying = null; isPlaying = false; progPct = 0; rsPosInterp = 0; nowPlayingLocked = false;
   renderNP(); renderQ(); renderSongs(); updateHeaderPill(); broadcastState();
+  smSaveState();
 }
 function toggleAuto() {
   autoMode = !autoMode;
@@ -2158,6 +2268,7 @@ async function syncRocketShow() {
     renderSongs();
     renderPSongs();
     showSyncResult(addedSongs, removedSongs);
+    smSaveSongs(); // Persiste le catalogue mis à jour
     toast(`&#10003; Sync OK — ${addedSongs.length} setlist, ${addedAmbiance} ambiance`, 'ok');
 
   } catch(err) {
@@ -2296,6 +2407,7 @@ function ctxAddPl(pl) {
   document.getElementById('ctx').classList.remove('show');
   if (!ctxSong || ctxSong.pl.includes(pl)) { toast('Déjà dans cette playlist', 'info'); return; }
   ctxSong.pl.push(pl);
+  smSaveSongs();
   toast(`Ajouté à "${PL[pl]}"`, 'ok');
 }
 
@@ -2581,9 +2693,11 @@ function saveSyncData() {
   renderPreview(s);
   renderPSongs();
   updateSyncUI(s);
+  smSaveLyrics(); // Persiste la synchronisation paroles
   // If song was 'new' and now has sync, move to 'active'
   if (SONG_STATUSES[curLyricSong] === 'new') {
     SONG_STATUSES[curLyricSong] = 'active';
+    smSaveSongs();
     updateTraitCount();
     toast('&#10003; Synchronisation enregistrée — chanson retirée d\'À traiter !', 'ok');
   } else {
@@ -3071,8 +3185,12 @@ function ovlClose(e, el) { if (e.target === el) el.classList.remove('show'); }
 function createPl() {
   const v = document.getElementById('newPlName').value.trim();
   if (!v) return;
+  const key = 'pl_' + Date.now();
+  PL[key] = v;
   closeModal('newPlModal');
   document.getElementById('newPlName').value = '';
+  smSavePlaylists();
+  buildCtxSub();
   toast(`Playlist "${v}" créée`, 'ok');
 }
 function createApl() {
@@ -3084,6 +3202,7 @@ function createApl() {
   document.getElementById('newAplName').value = '';
   renderAplList();
   selApl(key);
+  smSavePlaylists();
   toast(`&#9836; Playlist "${v}" créée`, 'ok');
 }
 
