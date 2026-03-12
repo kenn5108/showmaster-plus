@@ -28,8 +28,10 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 # ── RocketShow helpers ────────────────────────────────────────────────────────
 def rs_get_host():
-    s = load_json('settings.json', {'rs_host': 'rocketshow.local', 'rs_port': '80'})
-    return s.get('rs_host', 'rocketshow.local'), str(s.get('rs_port', '80'))
+    # Défaut : localhost (RocketShow tourne sur le même Pi que ShowMaster+)
+    # L'IP/hôte configuré dans les réglages du navigateur prend la priorité
+    s = load_json('settings.json', {'rs_host': 'localhost', 'rs_port': '80'})
+    return s.get('rs_host', 'localhost'), str(s.get('rs_port', '80'))
 
 def rs_fetch(path):
     """GET vers RocketShow. Essaie l'hôte configuré puis localhost en fallback."""
