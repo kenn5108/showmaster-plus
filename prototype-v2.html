@@ -1246,10 +1246,12 @@ function rsUrl(path) {
 async function rsFetch(path, opts = {}) {
   const method = (opts.method || 'GET').toUpperCase();
   const headers = {};
-  // Only set Content-Type for requests with a body
   if (opts.body) headers['Content-Type'] = 'application/json';
   Object.assign(headers, opts.headers || {});
-  const res = await fetch(rsUrl(path), { ...opts, method, headers });
+  const res = await fetch(rsUrl(path), {
+    ...opts, method, headers,
+    signal: opts.signal || AbortSignal.timeout(3000)
+  });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : res.text();
@@ -1317,16 +1319,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   updatePNoLyricsCount();
   document.getElementById('srch').addEventListener('input', e => { searchQ = e.target.value.toLowerCase(); renderSongs(); });
   document.addEventListener('click', () => document.getElementById('ctx').classList.remove('show'));
-  // Restore saved RocketShow settings
+  // Restore saved RocketShow settings (serveur prioritaire sur localStorage)
   const hostEl = document.getElementById('setHost');
   const portEl = document.getElementById('setPort');
   if (hostEl) hostEl.value = RS_HOST;
   if (portEl) portEl.value = RS_PORT;
   updateSettingsUrls();
-  // Start state polling after 1s (replaces manual ping + keep-alive)
-  setTimeout(() => {
-    startRsStatePolling();
-  }, 1000);
+  // Lancer le polling immédiatement — pas de délai
+  startRsStatePolling();
 });
 
 // ─── TABS ────────────────────────────────────
