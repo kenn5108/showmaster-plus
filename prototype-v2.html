@@ -1769,16 +1769,26 @@ function applyRsState(data) {
     const nearEnd = rsDurCurrent > 0 && rsPosInterp >= rsDurCurrent * 0.88;
 
     if (nearEnd) {
-      // ── Fin naturelle → avancer la file ──
+      // ── BUG FIX : si le serveur ShowMaster est connecté (WS actif), il gère
+      // l'avancement de la file de manière autonome. Le navigateur attend le
+      // state_update du serveur et ne touche PAS la file (évite le double-avancement
+      // et le bug d'affichage "titre reste, suivant disparaît").
+      if (smSocket && smSocket.connected) {
+        renderNP(); renderQ(); updateHeaderPill(); broadcastState();
+        return;
+      }
+
+      // ── Fallback : serveur déconnecté → le navigateur gère lui-même ──
       if (queue.length > 0) {
-        const next = queue.shift(); renderQ();
+        const next = queue.shift();
+        // Afficher immédiatement la prochaine chanson (corrige l'affichage)
+        nowPlaying = next; progPct = 0; rsPosInterp = 0; nowPlayingLocked = false;
+        renderNP(); renderQ(); renderSongs(); updateHeaderPill();
         if (autoMode) {
+          broadcastState();
           setTimeout(() => playSong(next.id), 400);
         } else {
-          // Mode manuel : pré-charger mais ne pas jouer
-          nowPlaying = next; progPct = 0; rsPosInterp = 0; nowPlayingLocked = false;
           rsLoadComposition(next.rsName || next.title);
-          renderNP(); renderQ(); renderSongs(); updateHeaderPill();
           broadcastState();
           toast(`⏭ "${next.title}" — appuyez sur ▶ pour lancer`, 'info');
         }
@@ -1841,7 +1851,14 @@ function applyRsState(data) {
           const pFill = document.getElementById('pFill');
           if (pFill) pFill.style.width = progPct + '%';
           applyTimers(rsPosInterp, rsDurCurrent);
-          broadcastState();
+          // BUG FIX : arrêter l'interpolation et ne pas sauvegarder quand la chanson
+          // est terminée — évite d'écraser le state.json que le serveur vient de mettre
+          // à jour avec la chanson suivante (race condition progTimer vs serveur).
+          if (rsPosInterp < rsDurCurrent) {
+            broadcastState();
+          } else {
+            clearInterval(progTimer);
+          }
         }, 300);
       } else if (!isPlaying && wasPlaying !== isPlaying) {
         clearInterval(progTimer);

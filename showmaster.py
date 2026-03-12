@@ -32,18 +32,38 @@ def rs_get_host():
     return s.get('rs_host', 'rocketshow.local'), str(s.get('rs_port', '80'))
 
 def rs_fetch(path):
+    """GET vers RocketShow. Essaie l'hôte configuré puis localhost en fallback."""
     host, port = rs_get_host()
     url = f'http://{host}:{port}{path}'
-    req = urllib.request.Request(url, method='GET')
-    with urllib.request.urlopen(req, timeout=2) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return json.loads(resp.read().decode())
+    except Exception:
+        if host in ('localhost', '127.0.0.1'):
+            raise
+        # Fallback localhost : RocketShow tourne sur le même Pi que ShowMaster+
+        url2 = f'http://localhost:{port}{path}'
+        req2 = urllib.request.Request(url2, method='GET')
+        with urllib.request.urlopen(req2, timeout=2) as resp:
+            return json.loads(resp.read().decode())
 
 def rs_post(path):
+    """POST vers RocketShow. Essaie l'hôte configuré puis localhost en fallback."""
     host, port = rs_get_host()
     url = f'http://{host}:{port}{path}'
-    req = urllib.request.Request(url, data=b'', method='POST')
-    with urllib.request.urlopen(req, timeout=3) as resp:
-        return resp.status
+    try:
+        req = urllib.request.Request(url, data=b'', method='POST')
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return resp.status
+    except Exception:
+        if host in ('localhost', '127.0.0.1'):
+            raise
+        # Fallback localhost
+        url2 = f'http://localhost:{port}{path}'
+        req2 = urllib.request.Request(url2, data=b'', method='POST')
+        with urllib.request.urlopen(req2, timeout=3) as resp:
+            return resp.status
 
 def rs_load_and_play(name):
     """Charge une composition dans RS puis la lance."""
