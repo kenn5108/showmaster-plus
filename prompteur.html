@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Prompteur · ShowMaster+</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;
+  --cur:#f59e0b;
+  --past:rgba(255,255,255,.18);
+  --next:rgba(255,255,255,.55);
+  --sect:rgba(255,255,255,.22);
+  --title:#888;
+  --font:'Segoe UI',system-ui,sans-serif;
+  --fs:clamp(22px, 4.5vw, 44px);
+  --fs-sm:clamp(13px, 2vw, 20px);
+}
+html,body{height:100%;background:var(--bg);color:#fff;font-family:var(--font);overflow:hidden}
+
+/* ── SONG INFO ── */
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:12px 24px 10px;
+  background:linear-gradient(to bottom, rgba(0,0,0,.95) 70%, transparent);
+  display:flex;align-items:baseline;gap:10px;
+}
+#songTitle{font-size:var(--fs-sm);font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#songArtist{font-size:calc(var(--fs-sm) * .85);color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#connDot{
+  width:8px;height:8px;border-radius:50%;background:#f87171;
+  flex-shrink:0;margin-left:auto;margin-bottom:2px;transition:background .4s;
+}
+#connDot.ok{background:#4ade80;animation:pulse .8s infinite alternate}
+@keyframes pulse{from{opacity:1}to{opacity:.4}}
+
+/* ── SCROLL CONTAINER ── */
+#scroller{
+  height:100vh;
+  overflow:hidden; /* scroll géré par JS */
+  padding:80px 6vw 55vh; /* 55vh bas = la ligne courante reste au centre */
+  display:flex;flex-direction:column;gap:0;
+}
+
+/* ── SECTIONS ── */
+.sect-lbl{
+  font-size:var(--fs-sm);font-weight:900;text-transform:uppercase;
+  letter-spacing:.14em;color:var(--sect);
+  padding:28px 0 10px;pointer-events:none;
+}
+.sect-lbl:first-child{padding-top:0}
+
+/* ── LIGNES ── */
+.lyric-line{
+  font-size:var(--fs);
+  line-height:1.45;
+  padding:6px 0;
+  color:var(--next);
+  transition:color .25s, opacity .25s, transform .25s;
+  will-change:transform;
+  cursor:default;
+  user-select:none;
+}
+.lyric-line.past{color:var(--past);transform:scale(.97)}
+.lyric-line.curr{color:var(--cur);font-weight:800;transform:scale(1.03);text-shadow:0 0 40px rgba(245,158,11,.4)}
+.lyric-line.next{color:var(--next)}
+.lyric-line.far{color:rgba(255,255,255,.25)}
+
+/* ── IDLE ── */
+#idle{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;
+  color:rgba(255,255,255,.2);font-size:var(--fs-sm);
+  pointer-events:none;
+  transition:opacity .4s;
+}
+#idle.hidden{opacity:0}
+#idle-icon{font-size:clamp(40px,8vw,80px);opacity:.12}
+
+/* ── FOOTER DOT (playback) ── */
+#playbar{
+  position:fixed;bottom:0;left:0;right:0;height:3px;
+  background:rgba(255,255,255,.06);
+}
+#playfill{height:100%;background:var(--cur);width:0%;transition:width .25s linear}
+
+/* ── NO LYRICS ── */
+#nolyrics{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.15);font-size:var(--fs);font-weight:300;
+  pointer-events:none;opacity:0;transition:opacity .4s;
+}
+#nolyrics.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span id="songTitle">ShowMaster+</span>
+  <span id="songArtist"></span>
+  <div id="connDot" title="Connexion au serveur"></div>
+</div>
+
+<div id="scroller"></div>
+
+<div id="idle">
+  <div id="idle-icon">&#9835;</div>
+  <div>En attente de la setlist…</div>
+</div>
+
+<div id="nolyrics">Pas de paroles</div>
+
+<div id="playbar"><div id="playfill"></div></div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────
+const SERVER = `${location.protocol}//${location.hostname}:8888`;
+
+// ─── STATE ───────────────────────────────────
+let SONGS    = [];
+let LYRICS   = {};
+let SYNC     = {};
+let rsSettings = { rs_host: location.hostname, rs_port: 80 };
+
+let curSongId   = null;   // song actuellement affichée
+let flatLines   = [];     // [{text, ts}] — lignes plates avec timecode
+let currLineIdx = -1;
+let rsPosMs     = 0;
+let rsDurMs     = 0;
+let rsPlaying   = false;
+let pollTm      = null;
+let scrollTm    = null;
+
+// ─── DOM ─────────────────────────────────────
+const scroller  = document.getElementById('scroller');
+const idleEl    = document.getElementById('idle');
+const nolyrEl   = document.getElementById('nolyrics');
+const titleEl   = document.getElementById('songTitle');
+const artistEl  = document.getElementById('songArtist');
+const playfill  = document.getElementById('playfill');
+const connDot   = document.getElementById('connDot');
+
+// ─── SOCKET.IO ───────────────────────────────
+const socket = io(SERVER, { transports: ['websocket'], reconnectionDelay: 1500 });
+
+socket.on('connect', () => { connDot.classList.add('ok'); });
+socket.on('disconnect', () => { connDot.classList.remove('ok'); });
+
+socket.on('state_update', data => {
+  applyState(data);
+});
+
+// ─── INIT ────────────────────────────────────
+async function init() {
+  try {
+    const [sRes, lRes, setRes] = await Promise.all([
+      fetch(SERVER + '/api/songs'),
+      fetch(SERVER + '/api/lyrics'),
+      fetch(SERVER + '/api/settings'),
+    ]);
+    if (sRes.ok)   { const d = await sRes.json();   SONGS  = d.songs  || []; }
+    if (lRes.ok)   { const d = await lRes.json();   LYRICS = d.lyrics || {}; SYNC = d.sync || {}; }
+    if (setRes.ok) { const d = await setRes.json(); rsSettings = { rs_host: d.rs_host || location.hostname, rs_port: d.rs_port || 80 }; }
+  } catch(e) {}
+
+  // Charger l'état courant
+  try {
+    const r = await fetch(SERVER + '/api/state');
+    if (r.ok) { const d = await r.json(); applyState(d); }
+  } catch(e) {}
+
+  startRsPoll();
+}
+
+// ─── APPLY STATE (from WS or REST) ───────────
+function applyState(state) {
+  if (!state || typeof state !== 'object') return;
+
+  // Identifier la chanson à afficher
+  // Priorité : loaded (en cours de lecture) → premier de la file
+  const queue = state.queue || [];
+  let songId = null;
+
+  if (state.loaded) {
+    // Chercher dans la liste par rsName ou title
+    const rs = (state.loaded || '').toLowerCase();
+    const found = SONGS.find(s =>
+      (s.rsName && s.rsName.toLowerCase() === rs) ||
+      s.title.toLowerCase() === rs
+    );
+    if (found) songId = found.id;
+  }
+  if (!songId && queue.length > 0) songId = queue[0];
+
+  if (songId !== curSongId) displaySong(songId);
+}
+
+// ─── DISPLAY SONG ────────────────────────────
+function displaySong(songId) {
+  curSongId = songId;
+  const s = SONGS.find(x => x.id === songId);
+
+  if (!s) {
+    // Rien à afficher
+    scroller.innerHTML = '';
+    titleEl.textContent = 'ShowMaster+';
+    artistEl.textContent = '';
+    idleEl.classList.remove('hidden');
+    nolyrEl.classList.remove('show');
+    flatLines = [];
+    return;
+  }
+
+  titleEl.textContent = s.title;
+  artistEl.textContent = s.artist;
+  idleEl.classList.add('hidden');
+
+  const secs = LYRICS[songId];
+  if (!secs || secs.length === 0) {
+    scroller.innerHTML = '';
+    nolyrEl.classList.add('show');
+    flatLines = [];
+    return;
+  }
+  nolyrEl.classList.remove('show');
+
+  // Construire flatLines et HTML
+  const SLBL = {intro:'Intro',verse:'Couplet',chorus:'Refrain',bridge:'Bridge',outro:'Outro',pre:'Pré-refrain',hook:'Hook',interlude:'Interlude',spoken:'Parlé'};
+  flatLines = [];
+  let lineIdx = 0;
+  let html = '';
+
+  secs.forEach(sec => {
+    html += `<div class="sect-lbl">${SLBL[sec.type] || sec.type}</div>`;
+    sec.lines.forEach(line => {
+      if (!line.trim()) return;
+      const ts = (SYNC[songId] || [])[lineIdx] ?? null;
+      flatLines.push({ text: line, ts });
+      html += `<div class="lyric-line far" data-li="${flatLines.length - 1}">${escHtml(line)}</div>`;
+      lineIdx++;
+    });
+  });
+
+  scroller.innerHTML = html;
+  currLineIdx = -1;
+  updateLines(-1);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── RS POLLING ──────────────────────────────
+function rsUrl(path) {
+  return `http://${rsSettings.rs_host}:${rsSettings.rs_port}${path}`;
+}
+
+async function pollRS() {
+  try {
+    const r = await fetch(rsUrl('/api/status'), { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) return;
+    const d = await r.json();
+    rsPlaying = d.playState === 'PLAYING';
+    rsPosMs   = (d.positionMillis || d.elapsedMillis || 0);
+    rsDurMs   = (d.durationMillis || d.totalMillis || 0);
+
+    // Mettre à jour la barre
+    if (rsDurMs > 0) playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
+
+    // Changer la chanson affichée si composition différente
+    if (d.currentComposition) {
+      const rs = d.currentComposition.toLowerCase();
+      const found = SONGS.find(s =>
+        (s.rsName && s.rsName.toLowerCase() === rs) ||
+        s.title.toLowerCase() === rs
+      );
+      if (found && found.id !== curSongId) displaySong(found.id);
+    }
+
+    // Surlignage
+    if (flatLines.length > 0 && SYNC[curSongId] && rsPlaying) {
+      tickHighlight();
+    }
+  } catch(e) {}
+}
+
+function startRsPoll() {
+  clearInterval(pollTm);
+  pollTm = setInterval(pollRS, 250);
+}
+
+// ─── HIGHLIGHT + SCROLL ──────────────────────
+function tickHighlight() {
+  if (!flatLines.length) return;
+  let newIdx = -1;
+  for (let i = 0; i < flatLines.length; i++) {
+    const ts = flatLines[i].ts;
+    if (ts !== null && ts !== undefined && rsPosMs >= ts) newIdx = i;
+  }
+  if (newIdx !== currLineIdx) {
+    currLineIdx = newIdx;
+    updateLines(currLineIdx);
+    scrollToCurr();
+  }
+}
+
+function updateLines(curr) {
+  const rows = scroller.querySelectorAll('.lyric-line');
+  rows.forEach((r, i) => {
+    r.classList.remove('past','curr','next','far');
+    if (i < curr)         r.classList.add('past');
+    else if (i === curr)  r.classList.add('curr');
+    else if (i === curr+1 || i === curr+2) r.classList.add('next');
+    else                  r.classList.add('far');
+  });
+}
+
+function scrollToCurr() {
+  if (currLineIdx < 0) { scroller.scrollTop = 0; return; }
+  const rows = scroller.querySelectorAll('.lyric-line');
+  const el = rows[currLineIdx];
+  if (!el) return;
+  // On veut que la ligne courante soit au centre vertical
+  const elTop    = el.offsetTop;
+  const elHeight = el.offsetHeight;
+  const viewH    = scroller.clientHeight;
+  const target   = elTop - (viewH / 2) + (elHeight / 2);
+  smoothScrollTo(scroller, target, 350);
+}
+
+function smoothScrollTo(el, target, dur) {
+  const start = el.scrollTop;
+  const diff  = target - start;
+  if (Math.abs(diff) < 2) return;
+  const startT = performance.now();
+  function step(now) {
+    const t = Math.min((now - startT) / dur, 1);
+    const ease = t < .5 ? 2*t*t : -1+(4-2*t)*t;
+    el.scrollTop = start + diff * ease;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── GO ──────────────────────────────────────
+init();
+</script>
+</body>
+</html>

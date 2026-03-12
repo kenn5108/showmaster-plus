@@ -43,6 +43,10 @@ def save_json(filename, data):
 def index():
     return send_from_directory(BASE_DIR, 'prototype-v2.html')
 
+@app.route('/lyrics')
+def prompteur():
+    return send_from_directory(BASE_DIR, 'prompteur.html')
+
 # ── STATE : file d'attente + titre en cours ───────────────────────────────────
 STATE_DEFAULT = {
     'queue': [],
