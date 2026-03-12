@@ -1245,7 +1245,7 @@ function smSaveSongs() {
 }
 
 function smSaveLyrics() {
-  smPost('/api/lyrics', SYNC);
+  smPost('/api/lyrics', { lyrics: LYRICS, sync: SYNC });
 }
 
 function smSavePlaylists() {
@@ -1316,10 +1316,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         SONG_STATUSES = savedSongs.statuses || {};
       }
 
-      // Paroles synchronisées
+      // Paroles + timecodes de synchronisation
       const savedLyrics = await smGet('/api/lyrics', null);
       if (savedLyrics && typeof savedLyrics === 'object') {
-        Object.assign(SYNC, savedLyrics);
+        if (savedLyrics.lyrics && typeof savedLyrics.lyrics === 'object') Object.assign(LYRICS, savedLyrics.lyrics);
+        if (savedLyrics.sync   && typeof savedLyrics.sync   === 'object') Object.assign(SYNC,   savedLyrics.sync);
       }
 
       // Playlists
@@ -2611,6 +2612,7 @@ function saveLyrics() {
   if (!curLyricSong) { toast('Aucune chanson sélectionnée', 'warn'); return; }
   // Clear sync since lyrics changed
   if (SYNC[curLyricSong]) delete SYNC[curLyricSong];
+  smSaveLyrics();
   toast('Paroles sauvegardées', 'ok');
   renderPSongs();
   const s = SONGS.find(x => x.id === curLyricSong);
