@@ -2588,30 +2588,41 @@ function renderEditor(s) {
     </div>`;
 }
 
+let _lyricsSaveTm = null;
+function _debounceSaveLyrics() {
+  // Sauvegarde automatique 800ms après la dernière modification
+  clearTimeout(_lyricsSaveTm);
+  _lyricsSaveTm = setTimeout(() => smSaveLyrics(), 800);
+}
+
 function addSec(type) {
   if (!curLyricSong) return;
   if (!LYRICS[curLyricSong]) LYRICS[curLyricSong] = [];
   LYRICS[curLyricSong].push({type, lines: []});
   const s = SONGS.find(x => x.id === curLyricSong);
   renderEditor(s); renderPreview(s);
+  _debounceSaveLyrics();
 }
 function delSec(si) {
   if (!curLyricSong) return;
   LYRICS[curLyricSong].splice(si, 1);
-  if (SYNC[curLyricSong]) delete SYNC[curLyricSong]; // invalidate sync
+  if (SYNC[curLyricSong]) delete SYNC[curLyricSong]; // paroles modifiées → sync invalide
   const s = SONGS.find(x => x.id === curLyricSong);
   renderEditor(s); renderPreview(s); updateSyncUI(s); renderPSongs();
+  _debounceSaveLyrics();
 }
 function updSec(si, val) {
   if (!curLyricSong) return;
   LYRICS[curLyricSong][si].lines = val.split('\n');
+  if (SYNC[curLyricSong]) delete SYNC[curLyricSong]; // texte modifié → sync invalide
   const s = SONGS.find(x => x.id === curLyricSong);
-  renderPreview(s);
+  renderPreview(s); updateSyncUI(s);
+  _debounceSaveLyrics();
 }
 function saveLyrics() {
   if (!curLyricSong) { toast('Aucune chanson sélectionnée', 'warn'); return; }
-  // Clear sync since lyrics changed
-  if (SYNC[curLyricSong]) delete SYNC[curLyricSong];
+  // NOTE : ne supprime PAS la sync — elle est invalidée uniquement si le texte change (updSec/delSec)
+  clearTimeout(_lyricsSaveTm);
   smSaveLyrics();
   toast('Paroles sauvegardées', 'ok');
   renderPSongs();
