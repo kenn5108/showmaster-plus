@@ -84,7 +84,7 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--fon
 .tc{display:none;height:100%;overflow:hidden}
 .tc.active{display:flex}
 #ts.active{display:grid;grid-template-columns:var(--sw) 1fr var(--qw)}
-#tp.active{display:grid;grid-template-columns:215px 1fr 280px}
+#tp.active{display:grid;grid-template-columns:215px 1fr}
 #ta.active{display:grid;grid-template-columns:185px 1fr 220px}
 #tset.active{display:flex;flex-direction:column;overflow-y:auto;background:var(--bg)}
 
@@ -292,6 +292,45 @@ table.st td{padding:13px 12px;border-bottom:1px solid rgba(29,46,72,.6);vertical
 
 /* Sync saved badge */
 .sync-saved-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);border-radius:5px;font-size:10px;color:var(--gr);margin-left:auto}
+.syncp{display:none} /* panneau droit supprimé — remplacé par le modal sync */
+
+/* ── SYNC MODAL ── */
+.sync-modal{position:fixed;inset:0;z-index:3000;background:rgba(4,7,14,.96);display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .18s}
+.sync-modal.show{opacity:1;pointer-events:all}
+.sync-modal-hdr{display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--bd);flex-shrink:0;gap:12px}
+.sync-modal-title{font-weight:900;font-size:17px;color:var(--t1);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sync-modal-hint{font-size:11px;color:var(--t3);flex-shrink:0}
+.sync-rec-dot{width:9px;height:9px;border-radius:50%;background:var(--rd);flex-shrink:0;display:none}
+.sync-rec-dot.on{display:block;animation:blink 1s infinite}
+.sync-modal-body{flex:1;overflow-y:auto;padding:8px 20px 20px}
+.sync-sect-row{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);padding:18px 8px 6px;pointer-events:none}
+.sync-line-row{display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:8px;cursor:pointer;transition:background .1s,border .1s;border:2px solid transparent;margin:2px 0}
+.sync-line-row:hover{background:rgba(255,255,255,.04)}
+.sync-line-row.synced{border-color:rgba(74,222,128,.2);background:rgba(74,222,128,.04)}
+.sync-line-row.curr{background:var(--ord) !important;border-color:var(--or) !important}
+.sync-line-row.past{opacity:.3}
+.sync-line-txt{flex:1;font-size:19px;color:var(--t1);line-height:1.5}
+.sync-line-ts{font-size:11px;color:var(--gr);font-family:monospace;min-width:38px;text-align:right;flex-shrink:0}
+.sync-line-clr{width:22px;height:22px;border-radius:50%;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.25);color:var(--rd);font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .1s}
+.sync-line-clr:hover{background:rgba(248,113,113,.28)}
+.sync-modal-foot{padding:12px 20px;border-top:1px solid var(--bd);flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.sync-modal-pbar{height:5px;background:var(--bg4);border-radius:3px;cursor:pointer;position:relative;flex:1}
+.sync-modal-pfill{height:100%;background:var(--or);border-radius:3px;pointer-events:none;transition:width .2s}
+.sync-modal-prow{display:flex;align-items:center;gap:10px}
+.sync-modal-time{font-size:12px;color:var(--t2);font-family:monospace;flex-shrink:0;min-width:90px}
+.sync-transport{display:flex;align-items:center;gap:8px;justify-content:center;flex:1}
+.sync-tb{background:var(--bg3);border:1px solid var(--bd);color:var(--t2);border-radius:8px;padding:8px 13px;cursor:pointer;font-size:12px;font-weight:700;transition:all .12s;white-space:nowrap}
+.sync-tb:hover{border-color:var(--or);color:var(--or)}
+.sync-play-btn{background:var(--or);border:none;color:var(--bg);border-radius:8px;padding:9px 22px;cursor:pointer;font-size:15px;font-weight:900;min-width:64px;transition:background .12s}
+.sync-play-btn:hover{background:var(--or2)}
+.sync-play-btn.playing{background:var(--bld);border:1px solid var(--bl);color:var(--bl)}
+.sync-modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.sync-save-btn{padding:10px 22px;background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.3);color:var(--gr);border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;transition:all .15s}
+.sync-save-btn:hover{background:rgba(74,222,128,.24)}
+.sync-cancel-btn{padding:10px 16px;background:transparent;border:1px solid var(--bd);color:var(--t3);border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s}
+.sync-cancel-btn:hover{border-color:var(--rd);color:var(--rd)}
+.sync-btn-pe{padding:5px 12px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--t2);cursor:pointer;font-size:11px;font-weight:700;transition:all .15s;display:flex;align-items:center;gap:5px}
+.sync-btn-pe:hover{border-color:var(--or);color:var(--or)}
 
 /* ── AMBIANCE TAB ── */
 .asb2{background:var(--bg2);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
@@ -766,6 +805,7 @@ tr.new-row:hover{background:rgba(245,158,11,.07) !important}
   <div class="pe">
     <div class="panelh">
       <span>&#9998; Éditeur de paroles</span>
+      <button class="sync-btn-pe" onclick="openSyncModal()" title="Synchroniser les paroles avec la musique">&#9711; SYNC</button>
       <button class="btn btn-or btn-sm" onclick="saveLyrics()">&#128190; Sauvegarder</button>
     </div>
     <div class="ebody" id="ebody">
@@ -1029,13 +1069,13 @@ tr.new-row:hover{background:rgba(245,158,11,.07) !important}
 </div>
 
 <!-- Sync RocketShow result modal -->
-<div class="ovl" id="syncModal" onclick="ovlClose(event,this)">
+<div class="ovl" id="rsyncModal" onclick="ovlClose(event,this)">
   <div class="modal" style="max-width:480px">
-    <div class="modal-ti" id="syncModalTi">&#8635; Synchronisation</div>
-    <div id="syncModalBody" style="margin-bottom:16px"></div>
-    <div style="font-size:10px;color:var(--t3);margin-bottom:12px" id="syncModalFooter"></div>
+    <div class="modal-ti" id="rsyncModalTi">&#8635; Synchronisation</div>
+    <div id="rsyncModalBody" style="margin-bottom:16px"></div>
+    <div style="font-size:10px;color:var(--t3);margin-bottom:12px" id="rsyncModalFooter"></div>
     <div class="modal-ft">
-      <button class="btn btn-or" onclick="closeModal('syncModal')">OK</button>
+      <button class="btn btn-or" onclick="closeModal('rsyncModal')">OK</button>
     </div>
   </div>
 </div>
@@ -2295,9 +2335,9 @@ function mmss(secs) {
 }
 
 function showSyncResult(added, removed) {
-  const ti = document.getElementById('syncModalTi');
-  const body = document.getElementById('syncModalBody');
-  const foot = document.getElementById('syncModalFooter');
+  const ti = document.getElementById('rsyncModalTi');
+  const body = document.getElementById('rsyncModalBody');
+  const foot = document.getElementById('rsyncModalFooter');
   const now = new Date();
   foot.textContent = 'Dernière synchro : ' + now.toLocaleTimeString('fr-FR');
 
@@ -2318,7 +2358,7 @@ function showSyncResult(added, removed) {
     }
     body.innerHTML = html;
   }
-  openModal('syncModal');
+  openModal('rsyncModal');
 }
 
 // ─── À TRAITER — ACTIONS ─────────────────────
@@ -2489,22 +2529,34 @@ function selectLyricSong(id) {
 
 function updateSyncUI(s) {
   const st = syncStatus(s.id);
+  // Mise à jour du bouton SYNC visible dans l'en-tête de l'éditeur
+  const syncBtnPe = document.querySelector('.sync-btn-pe');
+  if (syncBtnPe) {
+    if (st === 'synced') {
+      syncBtnPe.style.borderColor = 'rgba(74,222,128,.4)';
+      syncBtnPe.style.color = 'var(--gr)';
+      syncBtnPe.title = 'Synchronisation enregistrée — cliquez pour modifier';
+    } else {
+      syncBtnPe.style.borderColor = '';
+      syncBtnPe.style.color = '';
+      syncBtnPe.title = 'Synchroniser les paroles avec la musique';
+    }
+  }
+  // Mise à jour des éléments du panneau legacy (caché mais existant dans le DOM)
   const btn = document.getElementById('syncModeBtn');
   const foot = document.getElementById('syncFootInfo');
   const lancerSyncBtn = document.getElementById('lancerSyncBtn');
-  if (st === 'synced') {
-    btn.style.borderColor = 'rgba(74,222,128,.4)';
-    btn.style.color = 'var(--gr)';
-    foot.textContent = '✓ Synchronisation enregistrée — les paroles défileront automatiquement';
-    lancerSyncBtn.textContent = '▶ LANCER (avec sync)';
-  } else if (st === 'lyrics') {
-    btn.style.borderColor = '';
-    btn.style.color = '';
-    foot.textContent = 'Paroles saisies — utilisez MODE SYNC pour enregistrer la synchronisation';
-  } else {
-    btn.style.borderColor = '';
-    btn.style.color = '';
-    foot.textContent = 'Saisissez les paroles puis synchronisez';
+  if (btn && foot && lancerSyncBtn) {
+    if (st === 'synced') {
+      btn.style.borderColor = 'rgba(74,222,128,.4)';
+      btn.style.color = 'var(--gr)';
+      foot.textContent = '✓ Synchronisation enregistrée';
+      lancerSyncBtn.textContent = '▶ LANCER (avec sync)';
+    } else {
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      foot.textContent = st === 'lyrics' ? 'Paroles saisies — cliquez SYNC' : 'Saisissez les paroles puis synchronisez';
+    }
   }
 }
 
@@ -2611,101 +2663,160 @@ function renderPreview(s) {
 }
 
 // ─── SYNC RECORDING ──────────────────────────
-function toggleSyncMode() {
+// ─── SYNC MODAL ──────────────────────────────
+let smData = []; // timecodes en cours d'édition dans le modal [ms|null, ...]
+let smTimer = null;
+
+function openSyncModal() {
   if (!curLyricSong) { toast('Sélectionnez une chanson d\'abord', 'warn'); return; }
   const secs = LYRICS[curLyricSong];
   if (!secs || secs.length === 0) { toast('Saisissez les paroles d\'abord', 'warn'); return; }
-  syncModeActive = !syncModeActive;
-  const btn = document.getElementById('syncModeBtn');
-  const banner = document.getElementById('syncBanner');
-  if (syncModeActive) {
-    btn.classList.add('on');
-    btn.textContent = '✕ QUITTER SYNC';
-    banner.classList.add('show');
-    syncRecorded = [];
-    syncRunning = false;
-    document.getElementById('syncLaunchBtn').textContent = '▶ Lancer la chanson';
-    document.getElementById('syncLaunchBtn').className = 'sync-launch';
-    document.getElementById('syncEndBtn').disabled = true;
-    document.getElementById('syncTimer').textContent = '0:00.0';
-  } else {
-    btn.classList.remove('on');
-    btn.textContent = '○ MODE SYNC';
-    banner.classList.remove('show');
-    stopSyncRecording();
-  }
   const s = SONGS.find(x => x.id === curLyricSong);
-  renderPreview(s);
+  // Charger la synchro existante
+  const existing = SYNC[curLyricSong] || [];
+  // Compter les lignes plates
+  let count = 0;
+  secs.forEach(sec => sec.lines.forEach(l => { if (l.trim()) count++; }));
+  smData = [];
+  for (let i = 0; i < count; i++) smData.push(existing[i] !== undefined ? existing[i] : null);
+  document.getElementById('syncModalTitle').textContent = s.title;
+  renderSyncModalBody();
+  document.getElementById('syncModal').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  smTimer = setInterval(updateSyncModal, 250);
 }
 
-function syncLaunchToggle() {
-  if (!syncRunning) {
-    // Start recording
-    syncRunning = true;
-    syncStart = Date.now();
-    syncRecorded = new Array(syncLinesCount).fill(null);
-    activeLine = 0;
-    document.getElementById('syncLaunchBtn').textContent = '■ Arrêter';
-    document.getElementById('syncLaunchBtn').className = 'sync-launch stop';
-    document.getElementById('syncEndBtn').disabled = false;
-    document.getElementById('syncHint').textContent = 'Cliquez sur chaque ligne au moment où elle est chantée';
-    // Start timer display
-    syncTimerInterval = setInterval(() => {
-      const ms = Date.now() - syncStart;
-      const s = Math.floor(ms / 1000);
-      const ds = Math.floor((ms % 1000) / 100);
-      document.getElementById('syncTimer').textContent =
-        Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '.' + ds;
-    }, 100);
-    toast('Enregistrement sync démarré — cliquez les lignes !', 'warn');
+function closeSyncModal() {
+  document.getElementById('syncModal').classList.remove('show');
+  document.body.style.overflow = '';
+  clearInterval(smTimer);
+  smTimer = null;
+}
+
+function renderSyncModalBody() {
+  const secs = LYRICS[curLyricSong] || [];
+  let html = '';
+  let li = 0;
+  secs.forEach(sec => {
+    html += `<div class="sync-sect-row">${SLBL[sec.type] || sec.type}</div>`;
+    sec.lines.forEach(line => {
+      if (!line.trim()) return;
+      const ts = smData[li];
+      const hasSynced = ts !== null && ts !== undefined;
+      const tsStr = hasSynced ? fmtMs(ts) : '';
+      html += `
+      <div class="sync-line-row ${hasSynced ? 'synced' : ''}" data-li="${li}" onclick="clickSyncModalLine(${li})">
+        <span class="sync-line-txt">${line}</span>
+        <span class="sync-line-ts">${tsStr}</span>
+        ${hasSynced
+          ? `<button class="sync-line-clr" onclick="clearSyncLine(event,${li})" title="Effacer ce timecode">&#10005;</button>`
+          : `<span style="width:22px;flex-shrink:0"></span>`}
+      </div>`;
+      li++;
+    });
+  });
+  document.getElementById('syncModalBody').innerHTML = html;
+}
+
+function fmtMs(ms) {
+  const s = Math.floor(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function clickSyncModalLine(li) {
+  // Enregistre la position RocketShow actuelle comme timecode de la ligne
+  smData[li] = rsPosInterp > 0 ? rsPosInterp : (Date.now() - (syncStart || Date.now()));
+  renderSyncModalBody();
+  // Scroll vers la prochaine ligne non-synchronisée
+  const body = document.getElementById('syncModalBody');
+  const rows = body.querySelectorAll('.sync-line-row');
+  for (let i = li + 1; i < rows.length; i++) {
+    if (smData[i] === null || smData[i] === undefined) {
+      rows[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      break;
+    }
+  }
+}
+
+function clearSyncLine(e, li) {
+  e.stopPropagation();
+  smData[li] = null;
+  renderSyncModalBody();
+}
+
+function updateSyncModal() {
+  // Barre de progression
+  if (rsDurCurrent > 0) {
+    document.getElementById('syncModalPfill').style.width =
+      Math.min((rsPosInterp / rsDurCurrent) * 100, 100) + '%';
+  }
+  // Temps
+  const fmt = ms => { const s = Math.floor(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+  document.getElementById('syncModalTime').textContent = fmt(rsPosInterp) + ' / ' + fmt(rsDurCurrent);
+  // Bouton play
+  const pb = document.getElementById('syncPlayBtn');
+  if (pb) { pb.textContent = isPlaying ? '⏸' : '▶'; pb.className = 'sync-play-btn' + (isPlaying ? ' playing' : ''); }
+  // Dot enregistrement
+  document.getElementById('syncRecDot').className = 'sync-rec-dot' + (isPlaying ? ' on' : '');
+  // Surlignage de la ligne courante
+  if (rsPosInterp > 0) {
+    const body = document.getElementById('syncModalBody');
+    const rows = body.querySelectorAll('.sync-line-row');
+    let currLi = -1;
+    smData.forEach((ts, i) => { if (ts !== null && ts !== undefined && rsPosInterp >= ts) currLi = i; });
+    rows.forEach((r, i) => {
+      r.classList.toggle('curr', i === currLi);
+      r.classList.toggle('past', i < currLi);
+    });
+    if (currLi >= 0 && rows[currLi]) {
+      rows[currLi].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+
+async function syncTogglePlay() {
+  if (!curLyricSong) return;
+  const s = SONGS.find(x => x.id === curLyricSong);
+  if (!isPlaying) {
+    await rsLoadComposition(s.rsName || s.title);
+    try { await fetch(rsUrl('/api/transport/play'), { method: 'POST', signal: AbortSignal.timeout(3000) }); } catch(e) {}
   } else {
-    stopSyncRecording();
+    // Tentative pause, sinon stop
+    try {
+      const r = await fetch(rsUrl('/api/transport/pause'), { method: 'POST', signal: AbortSignal.timeout(2000) });
+      if (!r.ok) throw new Error();
+    } catch(e) {
+      try { await fetch(rsUrl('/api/transport/stop'), { method: 'POST', signal: AbortSignal.timeout(2000) }); } catch(e2) {}
+    }
   }
 }
 
-function stopSyncRecording() {
-  syncRunning = false;
-  clearInterval(syncTimerInterval);
-  clearInterval(syncPlayInterval);
-  document.getElementById('syncLaunchBtn').textContent = '▶ Lancer la chanson';
-  document.getElementById('syncLaunchBtn').className = 'sync-launch';
+async function syncSeek(deltaMs) {
+  const newPos = Math.max(0, rsPosInterp + deltaMs);
+  try {
+    await fetch(rsUrl('/api/transport/seek?positionMillis=' + Math.floor(newPos)),
+      { method: 'POST', signal: AbortSignal.timeout(2000) });
+  } catch(e) {
+    toast('Seek non supporté — utilisez play/stop', 'info');
+  }
 }
 
-function clickSyncLine(li) {
-  if (syncModeActive && syncRunning) {
-    // Record timestamp for this line
-    const ts = Date.now() - syncStart;
-    syncRecorded[li] = ts;
-    activeLine = li;
-    const s = SONGS.find(x => x.id === curLyricSong);
-    renderPreview(s);
-    // Flash feedback
-    toast(`Ligne ${li + 1} marquée à ${(ts / 1000).toFixed(1)}s`, 'info');
-  } else if (!syncModeActive) {
-    // Normal manual navigation
-    activeLine = li;
-    const s = SONGS.find(x => x.id === curLyricSong);
-    renderPreview(s);
-    updateMiniPv();
-  }
+function syncSeekClick(e, el) {
+  const rect = el.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const newPos = Math.floor(pct * rsDurCurrent);
+  syncSeek(newPos - rsPosInterp);
 }
 
 function saveSyncData() {
   if (!curLyricSong) return;
-  // Filter out null entries and fill gaps with interpolated values
-  const recorded = [...syncRecorded];
-  SYNC[curLyricSong] = recorded;
-  syncModeActive = false;
-  stopSyncRecording();
-  document.getElementById('syncModeBtn').classList.remove('on');
-  document.getElementById('syncModeBtn').textContent = '○ MODE SYNC';
-  document.getElementById('syncBanner').classList.remove('show');
+  SYNC[curLyricSong] = [...smData];
+  closeSyncModal();
   const s = SONGS.find(x => x.id === curLyricSong);
   renderPreview(s);
   renderPSongs();
   updateSyncUI(s);
-  smSaveLyrics(); // Persiste la synchronisation paroles
-  // If song was 'new' and now has sync, move to 'active'
+  smSaveLyrics();
   if (SONG_STATUSES[curLyricSong] === 'new') {
     SONG_STATUSES[curLyricSong] = 'active';
     smSaveSongs();
@@ -3262,5 +3373,39 @@ function toast(msg, type = 'info') {
   toastTm = setTimeout(() => t.classList.remove('show'), 2800);
 }
 </script>
+
+<!-- ══ SYNC MODAL ══ -->
+<div class="sync-modal" id="syncModal">
+  <div class="sync-modal-hdr">
+    <span class="sync-modal-title" id="syncModalTitle">—</span>
+    <div class="sync-rec-dot" id="syncRecDot"></div>
+    <span class="sync-modal-hint">Lancez la chanson puis cliquez chaque ligne au bon moment</span>
+    <button class="sync-cancel-btn" onclick="closeSyncModal()" style="margin-left:8px">&#10005; Fermer</button>
+  </div>
+  <div class="sync-modal-body" id="syncModalBody"></div>
+  <div class="sync-modal-foot">
+    <!-- Barre de progression -->
+    <div class="sync-modal-prow">
+      <span class="sync-modal-time" id="syncModalTime">0:00 / 0:00</span>
+      <div class="sync-modal-pbar" id="syncModalPbar" onclick="syncSeekClick(event,this)">
+        <div class="sync-modal-pfill" id="syncModalPfill" style="width:0%"></div>
+      </div>
+    </div>
+    <!-- Transport + actions -->
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="sync-transport">
+        <button class="sync-tb" onclick="syncSeek(-10000)">&#9194; 10s</button>
+        <button class="sync-tb" onclick="syncSeek(-5000)">&#8592; 5s</button>
+        <button class="sync-play-btn" id="syncPlayBtn" onclick="syncTogglePlay()">&#9654;</button>
+        <button class="sync-tb" onclick="syncSeek(5000)">5s &#8594;</button>
+        <button class="sync-tb" onclick="syncSeek(10000)">10s &#9193;</button>
+      </div>
+      <div class="sync-modal-actions" style="margin-left:auto">
+        <button class="sync-save-btn" onclick="saveSyncData()">&#10003; Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
