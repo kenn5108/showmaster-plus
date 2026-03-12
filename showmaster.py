@@ -12,6 +12,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 import json
 import os
+import socket
 import threading
 import time
 import urllib.request
@@ -28,44 +29,71 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 # ── RocketShow helpers ────────────────────────────────────────────────────────
 def rs_get_host():
-    # Défaut : localhost (RocketShow tourne sur le même Pi que ShowMaster+)
-    # L'IP/hôte configuré dans les réglages du navigateur prend la priorité
-    s = load_json('settings.json', {'rs_host': 'localhost', 'rs_port': '80'})
-    return s.get('rs_host', 'localhost'), str(s.get('rs_port', '80'))
+    # L'IP/hôte configuré dans les réglages du navigateur prend la priorité.
+    # Pas de défaut en dur : on calcule l'IP LAN réelle du Pi au démarrage.
+    s = load_json('settings.json', {})
+    host = s.get('rs_host', '') or ''
+    port = str(s.get('rs_port', '80') or '80')
+    # Si aucun hôte configuré, utiliser l'IP LAN du Pi (même machine que RS)
+    if not host or host in ('localhost', '127.0.0.1', 'rocketshow.local'):
+        host = _rs_lan_ip() or 'localhost'
+    return host, port
+
+def _rs_lan_ip():
+    """Détecte l'IP LAN de ce Pi (interface réseau, pas loopback).
+    RocketShow écoute sur l'interface LAN, pas sur loopback."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 1))   # pas de vraie connexion, juste pour trouver l'IP source
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
+
+def _rs_do_fetch(host, port, path):
+    url = f'http://{host}:{port}{path}'
+    req = urllib.request.Request(url, method='GET')
+    with urllib.request.urlopen(req, timeout=2) as resp:
+        return json.loads(resp.read().decode())
+
+def _rs_do_post(host, port, path):
+    url = f'http://{host}:{port}{path}'
+    req = urllib.request.Request(url, data=b'', method='POST')
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        return resp.status
 
 def rs_fetch(path):
-    """GET vers RocketShow. Essaie l'hôte configuré puis localhost en fallback."""
+    """GET vers RocketShow. Essaie l'hôte configuré, puis l'IP LAN, puis localhost."""
     host, port = rs_get_host()
-    url = f'http://{host}:{port}{path}'
-    try:
-        req = urllib.request.Request(url, method='GET')
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        if host in ('localhost', '127.0.0.1'):
-            raise
-        # Fallback localhost : RocketShow tourne sur le même Pi que ShowMaster+
-        url2 = f'http://localhost:{port}{path}'
-        req2 = urllib.request.Request(url2, method='GET')
-        with urllib.request.urlopen(req2, timeout=2) as resp:
-            return json.loads(resp.read().decode())
+    candidates = [host]
+    lan = _rs_lan_ip()
+    if lan and lan != host: candidates.append(lan)
+    if 'localhost' not in candidates and '127.0.0.1' not in candidates:
+        candidates.append('localhost')
+    last_exc = None
+    for h in candidates:
+        try:
+            return _rs_do_fetch(h, port, path)
+        except Exception as e:
+            last_exc = e
+    raise last_exc
 
 def rs_post(path):
-    """POST vers RocketShow. Essaie l'hôte configuré puis localhost en fallback."""
+    """POST vers RocketShow. Essaie l'hôte configuré, puis l'IP LAN, puis localhost."""
     host, port = rs_get_host()
-    url = f'http://{host}:{port}{path}'
-    try:
-        req = urllib.request.Request(url, data=b'', method='POST')
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return resp.status
-    except Exception:
-        if host in ('localhost', '127.0.0.1'):
-            raise
-        # Fallback localhost
-        url2 = f'http://localhost:{port}{path}'
-        req2 = urllib.request.Request(url2, data=b'', method='POST')
-        with urllib.request.urlopen(req2, timeout=3) as resp:
-            return resp.status
+    candidates = [host]
+    lan = _rs_lan_ip()
+    if lan and lan != host: candidates.append(lan)
+    if 'localhost' not in candidates and '127.0.0.1' not in candidates:
+        candidates.append('localhost')
+    last_exc = None
+    for h in candidates:
+        try:
+            return _rs_do_post(h, port, path)
+        except Exception as e:
+            last_exc = e
+    raise last_exc
 
 def rs_load_and_play(name):
     """Charge une composition dans RS puis la lance."""
