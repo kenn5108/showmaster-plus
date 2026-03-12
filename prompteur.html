@@ -178,29 +178,24 @@ async function init() {
 function applyState(state) {
   if (!state || typeof state !== 'object') return;
 
-  // Identifier la chanson à afficher
-  // Priorité : loaded (en cours de lecture) → premier de la file
-  const queue = state.queue || [];
+  // state.nowPlaying = objet song complet (ou null)
+  // state.queue      = tableau d'objets song
   let songId = null;
 
-  if (state.loaded) {
-    // Chercher dans la liste par rsName ou title
-    const rs = (state.loaded || '').toLowerCase();
-    const found = SONGS.find(s =>
-      (s.rsName && s.rsName.toLowerCase() === rs) ||
-      s.title.toLowerCase() === rs
-    );
-    if (found) songId = found.id;
+  if (state.nowPlaying && state.nowPlaying.id) {
+    songId = state.nowPlaying.id;
+  } else if (state.queue && state.queue.length > 0 && state.queue[0].id) {
+    songId = state.queue[0].id;
   }
-  if (!songId && queue.length > 0) songId = queue[0];
 
-  if (songId !== curSongId) displaySong(songId);
+  if (songId !== curSongId) displaySong(songId, state.nowPlaying || (state.queue && state.queue[0]));
 }
 
 // ─── DISPLAY SONG ────────────────────────────
-function displaySong(songId) {
+function displaySong(songId, songObj) {
   curSongId = songId;
-  const s = SONGS.find(x => x.id === songId);
+  // songObj : objet song depuis le state (fallback si SONGS pas encore chargé)
+  const s = SONGS.find(x => x.id === songId) || songObj || null;
 
   if (!s) {
     // Rien à afficher
@@ -262,16 +257,17 @@ async function pollRS() {
     const r = await fetch(rsUrl('/api/status'), { signal: AbortSignal.timeout(2500) });
     if (!r.ok) return;
     const d = await r.json();
-    rsPlaying = d.playState === 'PLAYING';
-    rsPosMs   = (d.positionMillis || d.elapsedMillis || 0);
-    rsDurMs   = (d.durationMillis || d.totalMillis || 0);
+    const ps = (d.playState || 'STOPPED').toUpperCase();
+    rsPlaying = ps === 'PLAYING';
+    rsPosMs   = d.positionMillis || 0;
+    rsDurMs   = d.currentCompositionDurationMillis || 0;
 
     // Mettre à jour la barre
     if (rsDurMs > 0) playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
 
     // Changer la chanson affichée si composition différente
-    if (d.currentComposition) {
-      const rs = d.currentComposition.toLowerCase();
+    if (d.currentCompositionName) {
+      const rs = d.currentCompositionName.toLowerCase();
       const found = SONGS.find(s =>
         (s.rsName && s.rsName.toLowerCase() === rs) ||
         s.title.toLowerCase() === rs
@@ -279,8 +275,8 @@ async function pollRS() {
       if (found && found.id !== curSongId) displaySong(found.id);
     }
 
-    // Surlignage
-    if (flatLines.length > 0 && SYNC[curSongId] && rsPlaying) {
+    // Surlignage (même en pause, pour voir la position courante)
+    if (flatLines.length > 0 && SYNC[curSongId]) {
       tickHighlight();
     }
   } catch(e) {}
