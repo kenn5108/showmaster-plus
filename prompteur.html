@@ -40,11 +40,10 @@ html,body{height:100%;background:var(--bg);color:#fff;font-family:var(--font);ov
 #scroller{
   height:100vh;
   overflow-y:scroll;
-  scroll-behavior:smooth;     /* animation gérée par le CSS */
-  scrollbar-width:none;       /* Firefox */
-  -ms-overflow-style:none;    /* IE/Edge */
-  padding:80px 6vw 55vh; /* 55vh bas = la ligne courante reste au centre */
-  position:relative;          /* nécessaire pour offsetTop des enfants */
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+  padding:80px 6vw 55vh;
+  position:relative;
   display:flex;flex-direction:column;gap:0;
 }
 #scroller::-webkit-scrollbar{display:none}
@@ -153,8 +152,10 @@ const socket = io(SERVER, { transports: ['websocket'], reconnectionDelay: 1500 }
 socket.on('connect', () => { connDot.classList.add('ok'); });
 socket.on('disconnect', () => { connDot.classList.remove('ok'); });
 
+let _initDone = false;
 socket.on('state_update', data => {
-  applyState(data);
+  // Ignorer les events WS avant que init() ait chargé SYNC
+  if (_initDone) applyState(data);
 });
 
 // ─── INIT ────────────────────────────────────
@@ -170,12 +171,13 @@ async function init() {
     if (setRes.ok) { const d = await setRes.json(); rsSettings = { rs_host: d.rs_host || location.hostname, rs_port: d.rs_port || 80 }; }
   } catch(e) {}
 
-  // Charger l'état courant
+  // Charger l'état courant — SYNC est maintenant chargé
   try {
     const r = await fetch(SERVER + '/api/state');
     if (r.ok) { const d = await r.json(); applyState(d); }
   } catch(e) {}
 
+  _initDone = true; // Activer le WebSocket maintenant que SYNC est disponible
   startRsPoll();
 }
 
