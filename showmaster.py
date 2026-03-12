@@ -12,6 +12,10 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 import json
 import os
+import threading
+import time
+import urllib.request
+import urllib.parse
 
 # ── Config ──────────────────────────────────────────────────────────────────
 PORT     = 8888
@@ -21,6 +25,108 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 app      = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+
+# ── RocketShow helpers ────────────────────────────────────────────────────────
+def rs_get_host():
+    s = load_json('settings.json', {'rs_host': 'rocketshow.local', 'rs_port': '80'})
+    return s.get('rs_host', 'rocketshow.local'), str(s.get('rs_port', '80'))
+
+def rs_fetch(path):
+    host, port = rs_get_host()
+    url = f'http://{host}:{port}{path}'
+    req = urllib.request.Request(url, method='GET')
+    with urllib.request.urlopen(req, timeout=2) as resp:
+        return json.loads(resp.read().decode())
+
+def rs_post(path):
+    host, port = rs_get_host()
+    url = f'http://{host}:{port}{path}'
+    req = urllib.request.Request(url, data=b'', method='POST')
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        return resp.status
+
+def rs_load_and_play(name):
+    """Charge une composition dans RS puis la lance."""
+    try:
+        encoded = urllib.parse.quote(name)
+        rs_post(f'/api/transport/set-composition-name?name={encoded}')
+    except Exception as e:
+        print(f'[RS] set-composition-name error: {e}')
+        return
+    try:
+        rs_post('/api/transport/play')
+    except Exception as e:
+        print(f'[RS] play error: {e}')
+
+def rs_load_only(name):
+    """Pré-charge une composition dans RS sans la lancer (mode manuel)."""
+    try:
+        encoded = urllib.parse.quote(name)
+        rs_post(f'/api/transport/set-composition-name?name={encoded}')
+    except Exception as e:
+        print(f'[RS] preload error: {e}')
+
+# ── Boucle RS côté serveur (auto-play, indépendant du navigateur) ─────────────
+_rs_prev_state  = 'STOPPED'
+_rs_prev_pos_ms = 0
+_rs_prev_dur_ms = 0
+
+def rs_auto_loop():
+    global _rs_prev_state, _rs_prev_pos_ms, _rs_prev_dur_ms
+    print('[RS] Boucle auto-play démarrée')
+    while True:
+        try:
+            data   = rs_fetch('/api/system/state')
+            ps     = (data.get('playState') or 'STOPPED').upper()
+            pos_ms = data.get('positionMillis') or 0
+            dur_ms = data.get('currentCompositionDurationMillis') or 0
+
+            # Détection fin de chanson : RS passe de PLAYING à STOPPED en fin naturelle
+            if ps == 'STOPPED' and _rs_prev_state == 'PLAYING':
+                near_end = _rs_prev_dur_ms > 0 and _rs_prev_pos_ms >= _rs_prev_dur_ms * 0.88
+                if near_end:
+                    state       = load_json('state.json', STATE_DEFAULT)
+                    q           = state.get('queue', [])
+                    auto_mode   = state.get('autoMode', True)
+                    now_playing = state.get('nowPlaying')
+
+                    if now_playing and q:
+                        next_song = q.pop(0)
+                        state['queue']      = q
+                        state['nowPlaying'] = next_song
+
+                        if auto_mode:
+                            state['isPlaying'] = True
+                            save_json('state.json', state)
+                            socketio.emit('state_update', state)
+                            rs_name = next_song.get('rsName') or next_song.get('title', '')
+                            print(f'[RS] Auto-play → "{rs_name}"')
+                            threading.Timer(0.4, rs_load_and_play, args=[rs_name]).start()
+                        else:
+                            # Mode manuel : pré-charger mais ne pas jouer
+                            state['isPlaying'] = False
+                            save_json('state.json', state)
+                            socketio.emit('state_update', state)
+                            rs_name = next_song.get('rsName') or next_song.get('title', '')
+                            print(f'[RS] Mode manuel : pré-charge "{rs_name}"')
+                            threading.Thread(target=rs_load_only, args=[rs_name], daemon=True).start()
+
+                    elif now_playing and not q:
+                        # File vide — fin du show
+                        state['nowPlaying'] = None
+                        state['isPlaying']  = False
+                        save_json('state.json', state)
+                        socketio.emit('state_update', state)
+                        print('[RS] Fin de la file d\'attente')
+
+            _rs_prev_state = ps
+            if pos_ms > 0: _rs_prev_pos_ms = pos_ms
+            if dur_ms > 0: _rs_prev_dur_ms = dur_ms
+
+        except Exception as e:
+            pass  # RS injoignable, on réessaie dans 1s
+
+        time.sleep(1)
 
 # ── Helpers JSON ─────────────────────────────────────────────────────────────
 def load_json(filename, default):
@@ -52,7 +158,8 @@ STATE_DEFAULT = {
     'queue': [],
     'nowPlaying': None,
     'isPlaying': False,
-    'nowPlayingLocked': False
+    'nowPlayingLocked': False,
+    'autoMode': True
 }
 
 @app.route('/api/state', methods=['GET'])
@@ -129,6 +236,10 @@ def on_disconnect():
 
 # ── Lancement ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    # Démarrer la boucle auto-play RS en arrière-plan
+    _rs_thread = threading.Thread(target=rs_auto_loop, daemon=True)
+    _rs_thread.start()
+
     print(f'ShowMaster+ démarré sur http://0.0.0.0:{PORT}')
     print(f'Données stockées dans : {DATA_DIR}')
     socketio.run(app, host='0.0.0.0', port=PORT, debug=False, allow_unsafe_werkzeug=True)
