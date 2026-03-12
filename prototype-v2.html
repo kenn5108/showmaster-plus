@@ -1236,7 +1236,10 @@ async function smPost(path, data) {
 
 function smSaveState() {
   smPost('/api/state', {
-    queue, nowPlaying, isPlaying, nowPlayingLocked
+    queue, nowPlaying, isPlaying, nowPlayingLocked,
+    posMs: rsPosInterp,      // position réelle pour le prompteur
+    durMs: rsDurCurrent,     // durée pour la barre de progression
+    activeLine: activeLine   // ligne active courante
   });
 }
 

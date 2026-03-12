@@ -181,17 +181,29 @@ async function init() {
 function applyState(state) {
   if (!state || typeof state !== 'object') return;
 
-  // state.nowPlaying = objet song complet (ou null)
-  // state.queue      = tableau d'objets song
-  let songId = null;
+  // Mettre à jour la position depuis le state ShowMaster (évite de dépendre du poll RS direct)
+  if (state.posMs !== undefined) {
+    rsPosMs = state.posMs;
+    if (state.durMs) {
+      rsDurMs = state.durMs;
+      playfill.style.width = Math.min(rsPosMs / rsDurMs * 100, 100) + '%';
+    }
+  }
 
+  // Identifier la chanson à afficher
+  let songId = null;
   if (state.nowPlaying && state.nowPlaying.id) {
     songId = state.nowPlaying.id;
   } else if (state.queue && state.queue.length > 0 && state.queue[0].id) {
     songId = state.queue[0].id;
   }
 
-  if (songId !== curSongId) displaySong(songId, state.nowPlaying || (state.queue && state.queue[0]));
+  if (songId !== curSongId) {
+    displaySong(songId, state.nowPlaying || (state.queue && state.queue[0]));
+  } else if (flatLines.length > 0) {
+    // Même chanson : juste mettre à jour le surlignage avec la nouvelle position
+    tickHighlight();
+  }
 }
 
 // ─── DISPLAY SONG ────────────────────────────
@@ -321,8 +333,11 @@ function scrollToCurr() {
   const rows = scroller.querySelectorAll('.lyric-line');
   const el = rows[currLineIdx];
   if (!el) return;
-  // scrollIntoView est fiable dans tous les conteneurs flex/scrollables
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // getBoundingClientRect est précis même dans un flex container avec transforms
+  const elRect = el.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const delta = elRect.top - scrollerRect.top - (scrollerRect.height / 2) + (elRect.height / 2);
+  scroller.scrollBy({ top: delta, behavior: 'smooth' });
 }
 
 // ─── ANTI-VEILLE ─────────────────────────────
