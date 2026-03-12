@@ -3155,7 +3155,16 @@ async function testRsConnection() {
     : `\u2715 Impossible de joindre ${host}:${port}`;
   setConnected(ok);
   if (ok) {
-    toast(`\u2713 RocketShow trouvé à ${host}:${port}`, 'ok');
+    // Sauvegarde automatique de l'adresse RS pour tous les appareils
+    RS_HOST = host; RS_PORT = port;
+    localStorage.setItem('sm_rs_host', host);
+    localStorage.setItem('sm_rs_port', port);
+    smPost('/api/settings', { rs_host: host, rs_port: port });
+    const hostEl = document.getElementById('setHost');
+    const portEl = document.getElementById('setPort');
+    if (hostEl) hostEl.value = host;
+    if (portEl) portEl.value = port;
+    toast(`\u2713 RocketShow trouvé à ${host}:${port} — paramètres sauvegardés`, 'ok');
   } else {
     toast('Connexion RocketShow échouée. Vérifiez l\'IP et le port.', 'err');
   }
