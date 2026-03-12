@@ -1083,7 +1083,7 @@ tr.new-row:hover{background:rgba(245,158,11,.07) !important}
 ══════════════════════════════════════════ -->
 <script>
 // ─── DATA ───────────────────────────────────
-const SONGS = [
+let SONGS = [
   {id:1,  title:"Lumière du Matin",     artist:"Camille Leroux",    dur:"4:20", bpm:72,  key:"Am",  tags:["slow","ballade","fr"],  types:["A"],     pl:["francophone","acoustique"]},
   {id:2,  title:"Traversée",            artist:"Marc Dubois",       dur:"3:55", bpm:84,  key:"C",   tags:["fr","ballade"],         types:["A","L"], pl:["francophone","classics"]},
   {id:3,  title:"Nos Souvenirs",        artist:"Sophie Laurent",    dur:"3:07", bpm:68,  key:"G",   tags:["fr","slow"],            types:["A"],     pl:["francophone","classics"]},
@@ -1268,39 +1268,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Chargement depuis le serveur ShowMaster (si disponible) ──
   if (SM_SERVER) {
-    // Songs + statuts
-    const savedSongs = await smGet('/api/songs', null);
-    if (savedSongs && savedSongs.songs && savedSongs.songs.length > 0) {
-      SONGS        = savedSongs.songs;
-      SONG_STATUSES = savedSongs.statuses || {};
-    }
+    try {
+      // Songs + statuts
+      const savedSongs = await smGet('/api/songs', null);
+      if (savedSongs && Array.isArray(savedSongs.songs) && savedSongs.songs.length > 0) {
+        SONGS         = savedSongs.songs;
+        SONG_STATUSES = savedSongs.statuses || {};
+      }
 
-    // Paroles synchronisées
-    const savedLyrics = await smGet('/api/lyrics', null);
-    if (savedLyrics) {
-      Object.assign(SYNC, savedLyrics);
-    }
+      // Paroles synchronisées
+      const savedLyrics = await smGet('/api/lyrics', null);
+      if (savedLyrics && typeof savedLyrics === 'object') {
+        Object.assign(SYNC, savedLyrics);
+      }
 
-    // Playlists
-    const savedPl = await smGet('/api/playlists', null);
-    if (savedPl && Object.keys(savedPl).length > 0) {
-      Object.assign(PL, savedPl);
-    }
+      // Playlists
+      const savedPl = await smGet('/api/playlists', null);
+      if (savedPl && typeof savedPl === 'object' && Object.keys(savedPl).length > 0) {
+        Object.assign(PL, savedPl);
+      }
 
-    // File d'attente + titre en cours
-    const savedState = await smGet('/api/state', null);
-    if (savedState) {
-      queue            = savedState.queue            || [];
-      nowPlaying       = savedState.nowPlaying       || null;
-      isPlaying        = savedState.isPlaying        || false;
-      nowPlayingLocked = savedState.nowPlayingLocked || false;
-    }
+      // File d'attente + titre en cours
+      const savedState = await smGet('/api/state', null);
+      if (savedState && typeof savedState === 'object') {
+        queue            = savedState.queue            || [];
+        nowPlaying       = savedState.nowPlaying       || null;
+        isPlaying        = savedState.isPlaying        || false;
+        nowPlayingLocked = savedState.nowPlayingLocked || false;
+      }
 
-    // Réglages RocketShow partagés (host/port communs à tous les appareils)
-    const savedSettings = await smGet('/api/settings', null);
-    if (savedSettings) {
-      if (savedSettings.rs_host) { RS_HOST = savedSettings.rs_host; localStorage.setItem('sm_rs_host', RS_HOST); }
-      if (savedSettings.rs_port) { RS_PORT = savedSettings.rs_port; localStorage.setItem('sm_rs_port', RS_PORT); }
+      // Réglages RocketShow partagés (host/port communs à tous les appareils)
+      const savedSettings = await smGet('/api/settings', null);
+      if (savedSettings && typeof savedSettings === 'object') {
+        if (savedSettings.rs_host) { RS_HOST = savedSettings.rs_host; localStorage.setItem('sm_rs_host', RS_HOST); }
+        if (savedSettings.rs_port) { RS_PORT = savedSettings.rs_port; localStorage.setItem('sm_rs_port', RS_PORT); }
+      }
+    } catch(e) {
+      console.error('[SM] Erreur chargement données serveur:', e);
     }
 
     // Connexion WebSocket pour sync multi-appareils
@@ -1676,9 +1680,9 @@ let lastRsState = null;
 async function pollRsState() {
   try {
     const data = await rsFetch('/api/system/state');
+    setConnected(true); // connecté dès que le serveur répond, quel que soit le format
     if (!data || typeof data !== 'object') return;
     applyRsState(data);
-    setConnected(true);
   } catch(e) {
     if (connected) { setConnected(false); applyRsStateBadge('OFFLINE'); }
   }
