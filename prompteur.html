@@ -337,8 +337,10 @@ function scrollToCurr() {
   const rows = scroller.querySelectorAll('.lyric-line');
   const el = rows[currLineIdx];
   if (!el) return;
-  // offsetTop est fiable avec position:relative sur le parent + scroll-behavior:smooth en CSS
-  const target = el.offsetTop - scroller.clientHeight / 2 + el.offsetHeight / 2;
+  // getBoundingClientRect = position visuelle réelle, fiable dans flex et sur Android
+  const elRect = el.getBoundingClientRect();
+  const srRect = scroller.getBoundingClientRect();
+  const target = scroller.scrollTop + (elRect.top - srRect.top) - srRect.height / 2 + elRect.height / 2;
   scroller.scrollTop = Math.max(0, target);
 }
 
