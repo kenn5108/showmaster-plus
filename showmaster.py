@@ -116,7 +116,7 @@ def rs_auto_loop():
                         state['nowPlaying'] = None
                         state['isPlaying']  = False
                         save_json('state.json', state)
-                        socketio.emit('state_update', state)
+                        socketio.emit('state_update', state, namespace='/')
                         print('[RS] Fin de la file d\'attente')
 
             _rs_prev_state = ps

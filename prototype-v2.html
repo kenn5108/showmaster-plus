@@ -1259,6 +1259,7 @@ function smSavePlaylists() {
 function smApplyState(s) {
   if (!s) return;
   _receivingUpdate = true;
+  const prevNpId = nowPlaying ? nowPlaying.id : null;
   queue             = s.queue            || [];
   nowPlaying        = s.nowPlaying       || null;
   isPlaying         = s.isPlaying        || false;
@@ -1267,6 +1268,13 @@ function smApplyState(s) {
     autoMode = s.autoMode;
     const btn = document.getElementById('autoBtn');
     if (btn) btn.className = 'qp-auto-btn' + (autoMode ? ' on' : '');
+  }
+  // Si le serveur a changé la chanson, remettre la position à zéro pour éviter
+  // qu'un poll RS STOPPED ultérieur ne déclenche un 2e avancement de file
+  const newNpId = nowPlaying ? nowPlaying.id : null;
+  if (newNpId !== prevNpId) {
+    rsPosInterp = 0; rsDurCurrent = 0;
+    clearInterval(progTimer); progPct = 0;
   }
   renderNP(); renderQ(); updateHeaderPill();
   _receivingUpdate = false;
@@ -1761,10 +1769,26 @@ function applyRsState(data) {
     const nearEnd = rsDurCurrent > 0 && rsPosInterp >= rsDurCurrent * 0.88;
 
     if (nearEnd) {
-      // Fin naturelle → le SERVEUR gère l'avancement de la file (showmaster.py / rs_auto_loop)
-      // On ne touche pas à nowPlaying ni queue : le state_update du serveur arrivera dans ~1s
-      progPct = 0; rsPosInterp = 0;
-      renderNP(); // garder la chanson courante affichée pendant la transition
+      // ── Fin naturelle → avancer la file ──
+      if (queue.length > 0) {
+        const next = queue.shift(); renderQ();
+        if (autoMode) {
+          setTimeout(() => playSong(next.id), 400);
+        } else {
+          // Mode manuel : pré-charger mais ne pas jouer
+          nowPlaying = next; progPct = 0; rsPosInterp = 0; nowPlayingLocked = false;
+          rsLoadComposition(next.rsName || next.title);
+          renderNP(); renderQ(); renderSongs(); updateHeaderPill();
+          broadcastState();
+          toast(`⏭ "${next.title}" — appuyez sur ▶ pour lancer`, 'info');
+        }
+      } else {
+        // File vide
+        nowPlaying = null; progPct = 0; rsPosInterp = 0;
+        renderNP(); renderQ(); renderSongs(); updateHeaderPill();
+        broadcastState();
+        toast('Fin de la file d\'attente', 'info');
+      }
     } else {
       // Arrêt manuel ou externe — refléter l'état
       renderNP(); renderQ(); updateHeaderPill(); broadcastState();
