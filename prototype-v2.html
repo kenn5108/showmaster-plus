@@ -1372,6 +1372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateSettingsUrls();
   // Lancer le polling immédiatement — pas de délai
   startRsStatePolling();
+  keepAwake();
 });
 
 // ─── TABS ────────────────────────────────────
@@ -1796,6 +1797,8 @@ function applyRsState(data) {
       renderQ();    // update badge count and position offsets
       renderSongs();
       updateHeaderPill();
+      // Démarrer le timer de sync paroles pour la chanson détectée
+      if (SYNC[matchedSong.id]) startSyncPlayback(matchedSong.id);
     }
 
     // Sync progress from real position
@@ -1812,6 +1815,8 @@ function applyRsState(data) {
       // wasPlaying changed: play/pause toggle
       // !prevLocked: card just became locked → move it from #qList to #qNowPlaying
       if (isPlaying && wasPlaying !== isPlaying) {
+        // RS vient de passer en PLAYING → démarrer le timer de sync paroles
+        if (nowPlaying && SYNC[nowPlaying.id]) startSyncPlayback(nowPlaying.id);
         clearInterval(progTimer);
         progTimer = setInterval(() => {
           if (!rsDurCurrent) return;
@@ -1913,10 +1918,8 @@ function playSong(id) {
   // RS polling (applyRsState) will take over time/progress management
   rsPlay(s.rsName || s.title);
 
-  // Update sync prompteur if same song
-  if (curLyricSong === s.id && SYNC[s.id]) {
-    startSyncPlayback(s.id);
-  }
+  // Démarrer le timer de sync paroles (toujours, pas seulement si l'éditeur est ouvert)
+  if (SYNC[s.id]) startSyncPlayback(s.id);
 
   toast(`&#9654; "${s.title}"`, 'ok');
 }
@@ -3372,6 +3375,35 @@ function toggleQueuePanel() {
   if (!qp) return;
   const open = qp.classList.toggle('open');
   if (fab) fab.innerHTML = open ? '&#10005;' : '&#9776;';
+}
+
+// ─── ANTI-VEILLE ──────────────────────────────
+let _wakeLock = null;
+async function keepAwake() {
+  if ('wakeLock' in navigator) {
+    try {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', async () => {
+        if (_wakeLock !== null && document.visibilityState === 'visible') {
+          try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+        }
+      });
+      return;
+    } catch(e) {}
+  }
+  // Fallback HTTP : vidéo canvas muette en boucle
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1; canvas.height = 1;
+    canvas.getContext('2d').fillRect(0, 0, 1, 1);
+    const v = document.createElement('video');
+    v.srcObject = canvas.captureStream(1);
+    v.muted = true; v.loop = true;
+    v.setAttribute('playsinline', '');
+    v.style.cssText = 'position:fixed;top:-2px;left:-2px;width:1px;height:1px;pointer-events:none;opacity:.01';
+    document.body.appendChild(v);
+    v.play().catch(() => {});
+  } catch(e) {}
 }
 
 function toast(msg, type = 'info') {
