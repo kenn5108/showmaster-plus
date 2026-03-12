@@ -39,10 +39,13 @@ html,body{height:100%;background:var(--bg);color:#fff;font-family:var(--font);ov
 /* ── SCROLL CONTAINER ── */
 #scroller{
   height:100vh;
-  overflow:hidden; /* scroll géré par JS */
+  overflow-y:scroll;
+  scrollbar-width:none;       /* Firefox */
+  -ms-overflow-style:none;    /* IE/Edge */
   padding:80px 6vw 55vh; /* 55vh bas = la ligne courante reste au centre */
   display:flex;flex-direction:column;gap:0;
 }
+#scroller::-webkit-scrollbar{display:none}
 
 /* ── SECTIONS ── */
 .sect-lbl{
@@ -57,16 +60,16 @@ html,body{height:100%;background:var(--bg);color:#fff;font-family:var(--font);ov
   font-size:var(--fs);
   line-height:1.45;
   padding:6px 0;
-  color:var(--next);
-  transition:color .25s, opacity .25s, transform .25s;
+  color:#fff;
+  transition:color .3s, opacity .3s, transform .3s;
   will-change:transform;
   cursor:default;
   user-select:none;
 }
-.lyric-line.past{color:var(--past);transform:scale(.97)}
-.lyric-line.curr{color:var(--cur);font-weight:800;transform:scale(1.03);text-shadow:0 0 40px rgba(245,158,11,.4)}
-.lyric-line.next{color:var(--next)}
-.lyric-line.far{color:rgba(255,255,255,.25)}
+.lyric-line.past{color:rgba(255,255,255,.28);transform:scale(.97)}
+.lyric-line.curr{color:var(--cur);font-weight:800;transform:scale(1.04);text-shadow:0 0 40px rgba(245,158,11,.45)}
+.lyric-line.next{color:rgba(255,255,255,.75)}
+.lyric-line.far{color:rgba(255,255,255,.38)}
 
 /* ── IDLE ── */
 #idle{
