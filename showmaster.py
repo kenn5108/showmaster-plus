@@ -114,4 +114,4 @@ def on_disconnect():
 if __name__ == '__main__':
     print(f'ShowMaster+ démarré sur http://0.0.0.0:{PORT}')
     print(f'Données stockées dans : {DATA_DIR}')
-    socketio.run(app, host='0.0.0.0', port=PORT, debug=False)
+    socketio.run(app, host='0.0.0.0', port=PORT, debug=False, allow_unsafe_werkzeug=True)
