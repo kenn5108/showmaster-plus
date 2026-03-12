@@ -424,7 +424,7 @@ table.st td{padding:13px 12px;border-bottom:1px solid rgba(29,46,72,.6);vertical
   background:#050608;border-bottom:1px solid #0a1520;
   flex-shrink:0;height:210px;overflow-y:auto;overflow-x:hidden;
   cursor:pointer;position:relative;padding:8px 12px 8px;
-  transition:background .15s;
+  transition:background .15s;scroll-behavior:smooth;
 }
 .qp-screen:hover{background:#06090f}
 .qp-screen::after{content:'&#9633;';position:absolute;top:7px;right:9px;font-size:12px;color:#131d2c;pointer-events:none}
@@ -2905,9 +2905,12 @@ function renderQpPrompteur() {
     });
   });
   el.innerHTML = html;
-  // Scroll current line into view
+  // Scroll direct (scrollTop) — plus fiable que scrollIntoView sur Android
   const currLine = el.querySelector('.qp-screen-line.curr');
-  if (currLine) setTimeout(() => currLine.scrollIntoView({behavior:'smooth', block:'center'}), 50);
+  if (currLine) setTimeout(() => {
+    const target = currLine.offsetTop - el.clientHeight / 2 + currLine.offsetHeight / 2;
+    el.scrollTop = Math.max(0, target);
+  }, 60);
 }
 
 // updateMiniPv is kept for backward compatibility — delegates to renderQpPrompteur

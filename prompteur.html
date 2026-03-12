@@ -40,9 +40,11 @@ html,body{height:100%;background:var(--bg);color:#fff;font-family:var(--font);ov
 #scroller{
   height:100vh;
   overflow-y:scroll;
+  scroll-behavior:smooth;     /* animation gérée par le CSS */
   scrollbar-width:none;       /* Firefox */
   -ms-overflow-style:none;    /* IE/Edge */
   padding:80px 6vw 55vh; /* 55vh bas = la ligne courante reste au centre */
+  position:relative;          /* nécessaire pour offsetTop des enfants */
   display:flex;flex-direction:column;gap:0;
 }
 #scroller::-webkit-scrollbar{display:none}
@@ -256,6 +258,8 @@ function displaySong(songId, songObj) {
   scroller.innerHTML = html;
   currLineIdx = -1;
   updateLines(-1);
+  // Positionner immédiatement si la chanson est déjà en cours
+  if (rsPosMs > 0) setTimeout(() => tickHighlight(), 100);
 }
 
 function escHtml(s) {
@@ -333,11 +337,9 @@ function scrollToCurr() {
   const rows = scroller.querySelectorAll('.lyric-line');
   const el = rows[currLineIdx];
   if (!el) return;
-  // getBoundingClientRect est précis même dans un flex container avec transforms
-  const elRect = el.getBoundingClientRect();
-  const scrollerRect = scroller.getBoundingClientRect();
-  const delta = elRect.top - scrollerRect.top - (scrollerRect.height / 2) + (elRect.height / 2);
-  scroller.scrollBy({ top: delta, behavior: 'smooth' });
+  // offsetTop est fiable avec position:relative sur le parent + scroll-behavior:smooth en CSS
+  const target = el.offsetTop - scroller.clientHeight / 2 + el.offsetHeight / 2;
+  scroller.scrollTop = Math.max(0, target);
 }
 
 // ─── ANTI-VEILLE ─────────────────────────────
