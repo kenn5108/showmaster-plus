@@ -67,23 +67,44 @@ def rs_load_only(name):
         print(f'[RS] preload error: {e}')
 
 # ── Boucle RS côté serveur (auto-play, indépendant du navigateur) ─────────────
-_rs_prev_state  = 'STOPPED'
-_rs_prev_pos_ms = 0
-_rs_prev_dur_ms = 0
+_rs_prev_state   = 'STOPPED'
+_rs_prev_pos_ms  = 0
+_rs_prev_dur_ms  = 0
+_rs_last_error   = ''
+_rs_last_data    = {}
+_rs_poll_count   = 0
+_rs_play_started = 0   # timestamp (time.time()) quand RS est passé en PLAYING
 
 def rs_auto_loop():
     global _rs_prev_state, _rs_prev_pos_ms, _rs_prev_dur_ms
+    global _rs_last_error, _rs_last_data, _rs_poll_count
+    global _rs_play_started
     print('[RS] Boucle auto-play démarrée')
     while True:
         try:
             data   = rs_fetch('/api/system/state')
+            _rs_last_data  = data
+            _rs_last_error = ''
+            _rs_poll_count += 1
             ps     = (data.get('playState') or 'STOPPED').upper()
             pos_ms = data.get('positionMillis') or 0
             dur_ms = data.get('currentCompositionDurationMillis') or 0
 
+            # Suivre quand RS commence à jouer (pour le fallback sans durée)
+            if ps == 'PLAYING' and _rs_prev_state != 'PLAYING':
+                _rs_play_started = time.time()
+
             # Détection fin de chanson : RS passe de PLAYING à STOPPED en fin naturelle
             if ps == 'STOPPED' and _rs_prev_state == 'PLAYING':
-                near_end = _rs_prev_dur_ms > 0 and _rs_prev_pos_ms >= _rs_prev_dur_ms * 0.88
+                play_secs = time.time() - _rs_play_started if _rs_play_started else 0
+                # Critère principal : position atteint 88% de la durée connue
+                near_end_by_pos = _rs_prev_dur_ms > 0 and _rs_prev_pos_ms >= _rs_prev_dur_ms * 0.88
+                # Fallback : durée inconnue (RS ne renvoie pas currentCompositionDurationMillis)
+                # mais on a joué au moins 10 secondes → on suppose fin naturelle
+                near_end_by_time = _rs_prev_dur_ms == 0 and play_secs >= 10
+                near_end = near_end_by_pos or near_end_by_time
+                print(f'[RS] PLAYING→STOPPED | pos={_rs_prev_pos_ms}ms dur={_rs_prev_dur_ms}ms '
+                      f'play_secs={play_secs:.1f} near_end={near_end}')
                 if near_end:
                     state       = load_json('state.json', STATE_DEFAULT)
                     q           = state.get('queue', [])
@@ -124,6 +145,8 @@ def rs_auto_loop():
             if dur_ms > 0: _rs_prev_dur_ms = dur_ms
 
         except Exception as e:
+            _rs_last_error = str(e)
+            _rs_poll_count += 1
             print(f'[RS] Poll error: {e}')
 
         time.sleep(1)
@@ -238,15 +261,48 @@ def on_disconnect():
 _rs_thread = threading.Thread(target=rs_auto_loop, daemon=True)
 _rs_thread.start()
 
-# ── Endpoint debug RS ──────────────────────────────────────────────────────────
+# ── Endpoints debug RS ─────────────────────────────────────────────────────────
 @app.route('/api/rs/debug')
 def rs_debug():
+    host, port = rs_get_host()
     return jsonify({
-        'thread_alive': _rs_thread.is_alive(),
-        'prev_state':   _rs_prev_state,
-        'prev_pos_ms':  _rs_prev_pos_ms,
-        'prev_dur_ms':  _rs_prev_dur_ms,
+        'thread_alive':  _rs_thread.is_alive(),
+        'poll_count':    _rs_poll_count,
+        'prev_state':    _rs_prev_state,
+        'prev_pos_ms':   _rs_prev_pos_ms,
+        'prev_dur_ms':   _rs_prev_dur_ms,
+        'play_secs_ago': round(time.time() - _rs_play_started, 1) if _rs_play_started else None,
+        'last_error':    _rs_last_error,
+        'last_data':     _rs_last_data,
+        'rs_host':       host,
+        'rs_port':       port,
     })
+
+@app.route('/api/rs/test')
+def rs_test():
+    """Test immédiat de la connexion au RocketShow depuis le serveur."""
+    host, port = rs_get_host()
+    try:
+        data = rs_fetch('/api/system/state')
+        return jsonify({'ok': True, 'host': host, 'port': port, 'data': data})
+    except Exception as e:
+        # Essai fallback sur localhost si l'hôte configuré échoue
+        fallback_result = None
+        if host != 'localhost' and host != '127.0.0.1':
+            try:
+                url = f'http://localhost:{port}/api/system/state'
+                req = urllib.request.Request(url, method='GET')
+                with urllib.request.urlopen(req, timeout=2) as resp:
+                    fallback_result = json.loads(resp.read().decode())
+            except Exception as e2:
+                fallback_result = f'aussi échoué: {e2}'
+        return jsonify({
+            'ok': False,
+            'host': host,
+            'port': port,
+            'error': str(e),
+            'localhost_fallback': fallback_result,
+        })
 
 # ── Lancement ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
